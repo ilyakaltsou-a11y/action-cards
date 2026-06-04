@@ -1,0 +1,350 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#101828" />
+    <title>Карточки действий</title>
+    <script>
+      if (window.location.protocol === "file:") {
+        window.location.replace(`http://127.0.0.1:5176/${window.location.search || "?v=46"}`);
+      }
+    </script>
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="stylesheet" href="styles.css?v=46" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="app-header">
+        <button class="activity-button" id="activityButton" type="button" aria-label="Открыть активность">
+          <span class="activity-flame" id="activityFlame" aria-hidden="true"></span>
+          <span class="activity-count" id="activityCount">0</span>
+        </button>
+        <div>
+          <p class="eyebrow">English by pictures</p>
+          <h1>Карточки действий</h1>
+        </div>
+        <div class="header-actions">
+          <button class="install-button" id="installButton" type="button" hidden aria-label="Установить приложение">+</button>
+          <button class="menu-button" id="openSettingsButton" type="button" aria-label="Открыть настройки">☰</button>
+        </div>
+      </header>
+
+      <main class="app-grid">
+        <section class="study-card panel" aria-label="Тренировка карточек">
+          <div class="panel-head">
+            <div>
+              <p class="section-kicker">Тренировка</p>
+              <h2 id="studyTitle">Пока нет карточек</h2>
+            </div>
+            <span class="pill" id="reviewStatus">0 карточек</span>
+          </div>
+
+          <button class="flashcard" id="flashcard" type="button" aria-label="Перевернуть карточку">
+            <span class="flashcard-face flashcard-front">
+              <span class="empty-visual" id="cardImage">
+                <span>Создай первую карточку</span>
+              </span>
+            </span>
+            <span class="flashcard-face flashcard-back">
+              <span class="phrase" id="cardPhrase">No cards yet</span>
+              <span class="translation-chip is-hidden" id="cardTranslation" role="button" tabindex="0">
+                <span class="translation-label">Перевод по нажатию</span>
+                <span class="translation-text"></span>
+              </span>
+              <span class="listen-row">
+                <span class="listen-hint" id="speechStatus">Озвучка браузером</span>
+                <button class="listen-button" id="listenCardButton" type="button" aria-label="Прослушать фразу">▶</button>
+              </span>
+              <span class="small-note">Нажми на карточку, чтобы перевернуть. Свайп влево — не знаю, вправо — знаю.</span>
+            </span>
+            <span class="swipe-cue swipe-cue-left">Не знаю</span>
+            <span class="swipe-cue swipe-cue-right">Знаю</span>
+          </button>
+
+          <div class="memory-controls" aria-label="Оценка свайпом">
+            <button class="danger-button" id="againButton" type="button" hidden>Не помню</button>
+            <button class="success-button" id="gotItButton" type="button" hidden>Знаю</button>
+            <span class="swipe-help swipe-help-left">← не знаю</span>
+            <span class="swipe-help swipe-help-right">знаю →</span>
+          </div>
+
+        </section>
+
+        <section class="creator panel" aria-label="Создание карточки">
+          <div class="panel-head">
+            <div>
+              <p class="section-kicker">Создание</p>
+              <h2 id="creatorTitle">Новое слово</h2>
+            </div>
+            <span class="status-dot" id="aiStatusDot">AI</span>
+          </div>
+
+          <form class="creator-form" id="creatorForm">
+            <div class="mode-switch" aria-label="Способ создания фразы">
+              <label>
+                <input type="radio" name="phraseMode" value="ai" checked />
+                <span>AI подберет фразу</span>
+              </label>
+              <label>
+                <input type="radio" name="phraseMode" value="manual" />
+                <span>Я напишу фразу</span>
+              </label>
+            </div>
+
+            <label class="word-field">
+              <span>Введи слово на английском</span>
+              <input id="wordInput" type="text" autocomplete="off" inputmode="text" aria-describedby="wordHelp" />
+            </label>
+            <p class="field-help" id="wordHelp">Например: eat, carry, open. Подсказки не вставляются в поле заранее.</p>
+
+            <label class="word-field manual-phrase-field" id="manualPhraseField" hidden>
+              <span>Моя фраза на английском</span>
+              <input id="manualPhraseInput" type="text" autocomplete="off" />
+            </label>
+            <label class="word-field">
+              <span>Пожелания к картинке</span>
+              <textarea
+                id="imagePreferenceInput"
+                rows="3"
+                autocomplete="off"
+                placeholder="Например: warehouse, evening, realistic truck, clear loading process"
+              ></textarea>
+            </label>
+            <p class="field-help">Это не прямой prompt. AI учтет пожелания, но сам соберет безопасный запрос для картинки.</p>
+            <button class="main-button generate-button" id="generateButton" type="submit">Создать карточку с AI</button>
+            <button class="soft-button cancel-edit-button" id="cancelEditButton" type="button" hidden>Отменить редактирование</button>
+          </form>
+
+          <div class="status-box" id="generationStatus" role="status">
+            Введи слово, и приложение подберет естественную фразу и картинку.
+          </div>
+
+          <article class="draft-card" id="draftCard" hidden>
+            <div class="draft-image" id="draftImage"></div>
+            <div class="draft-content">
+              <p class="section-kicker">Готовая карточка</p>
+              <div class="draft-phrase-row">
+                <h3 id="draftPhrase"></h3>
+                <button class="listen-button" id="listenDraftButton" type="button" aria-label="Прослушать новую фразу">▶</button>
+              </div>
+              <p class="draft-translation" id="draftTranslation"></p>
+              <p id="draftScene"></p>
+            </div>
+            <div class="draft-actions">
+              <button class="soft-button" id="regenerateButton" type="button">Другой вариант</button>
+              <button class="success-button" id="saveDraftButton" type="button">Сохранить</button>
+            </div>
+          </article>
+        </section>
+
+        <section class="song panel" aria-label="Создание карточек по песне">
+          <div class="panel-head">
+            <div>
+              <p class="section-kicker">Песни</p>
+              <h2>Карточки по песне</h2>
+            </div>
+          </div>
+          <button class="main-button" id="openSongButton" type="button">Создать карточки по песне</button>
+          <button class="soft-link-button" id="songSearchButton" type="button">Найти песню с AI</button>
+          <p class="field-help">Вставь свои строки песни или дай AI определить песню по примерному названию. Без вывода полного текста песни.</p>
+        </section>
+
+        <section class="deck panel" aria-label="Колода">
+          <div class="panel-head">
+            <div>
+              <p class="section-kicker">Колода</p>
+              <h2>Мои карточки</h2>
+            </div>
+            <button class="text-button" id="openDeckButton" type="button">Список</button>
+          </div>
+          <div class="folder-box">
+            <div class="folder-box-head">
+              <h3>Папки</h3>
+              <span id="folderSummary">Все папки</span>
+            </div>
+            <div class="folder-tree" id="folderTree" role="tree" aria-label="Дерево папок"></div>
+            <label>
+              <span>Создать папку</span>
+              <input id="folderNameInput" type="text" autocomplete="off" placeholder="Например: Песни / Dead Poet Society" />
+            </label>
+            <button class="soft-button" id="createFolderButton" type="button">Добавить папку</button>
+          </div>
+          <button class="deck-summary-button" id="openDeckSummaryButton" type="button">
+            <span>Открыть карточки</span>
+            <strong id="deckSummary">0 карточек</strong>
+          </button>
+        </section>
+      </main>
+    </div>
+
+    <dialog class="deck-dialog" id="deckDialog">
+      <section class="deck-dialog-panel" aria-label="Список карточек">
+        <div class="dialog-head">
+          <div>
+            <p class="section-kicker">Колода</p>
+            <h2>Карточки</h2>
+          </div>
+          <button class="icon-button" id="closeDeckButton" type="button" aria-label="Закрыть список">×</button>
+        </div>
+        <div class="dialog-actions">
+          <button class="text-button" id="selectCardsButton" type="button">Выбрать</button>
+          <button class="text-button" id="clearButton" type="button">Очистить</button>
+        </div>
+        <div class="bulk-toolbar" id="bulkToolbar" hidden>
+          <div class="bulk-toolbar-head">
+            <strong id="selectedCardsCount">0 выбрано</strong>
+            <button class="text-button" id="cancelSelectionButton" type="button">Готово</button>
+          </div>
+          <div class="bulk-actions">
+            <button class="soft-button" id="selectVisibleCardsButton" type="button">Выбрать все здесь</button>
+            <select id="bulkFolderSelect" aria-label="Папка для переноса"></select>
+            <button class="main-button" id="moveSelectedCardsButton" type="button">Переместить</button>
+            <button class="danger-button" id="deleteSelectedCardsButton" type="button">Удалить</button>
+          </div>
+        </div>
+        <div class="deck-list" id="deckList"></div>
+      </section>
+    </dialog>
+
+    <dialog class="deck-dialog" id="settingsDialog">
+      <section class="deck-dialog-panel" aria-label="Настройки профиля">
+        <div class="dialog-head">
+          <div>
+            <p class="section-kicker">Профиль</p>
+            <h2>Настройки</h2>
+          </div>
+          <button class="icon-button" id="closeSettingsButton" type="button" aria-label="Закрыть настройки">×</button>
+        </div>
+        <div class="profile-box">
+          <label>
+            <span>Код профиля</span>
+            <input id="profileInput" type="text" autocomplete="off" spellcheck="false" />
+          </label>
+          <div class="profile-actions">
+            <button class="soft-button" id="loadProfileButton" type="button">Открыть</button>
+            <button class="soft-button" id="newProfileButton" type="button">Новый</button>
+          </div>
+          <p>Для другого устройства введи тот же код. Для семьи или друзей создай отдельный код.</p>
+        </div>
+      </section>
+    </dialog>
+
+    <dialog class="deck-dialog" id="activityDialog">
+      <section class="deck-dialog-panel activity-dialog-panel" aria-label="Активность занятий">
+        <div class="dialog-head">
+          <div>
+            <p class="section-kicker">Активность</p>
+            <h2>Огонек дня</h2>
+          </div>
+          <button class="icon-button" id="closeActivityButton" type="button" aria-label="Закрыть активность">×</button>
+        </div>
+        <div class="activity-card">
+          <div class="activity-main">
+            <span class="activity-flame activity-flame-large" id="activityDialogFlame" aria-hidden="true"></span>
+            <div>
+              <p class="activity-summary" id="activitySummary">0/7 карточек</p>
+              <p class="activity-progress-text" id="activityProgressText">Средний уровень</p>
+            </div>
+          </div>
+          <div class="activity-meter" aria-hidden="true">
+            <span id="activityProgressFill"></span>
+          </div>
+          <div class="activity-goal-row">
+            <span id="activityStreakText">Серия: 0 дней</span>
+            <span id="activityGoalText">До цели: 14 дней</span>
+            <span id="activityFreezeText">Заморозки: 0</span>
+          </div>
+          <button class="soft-button goal-change-button" id="changeGoalButton" type="button">Сменить цель</button>
+        </div>
+      </section>
+    </dialog>
+
+    <dialog class="deck-dialog" id="goalDialog">
+      <section class="deck-dialog-panel goal-dialog-panel" aria-label="Выбор дневной цели">
+        <div class="dialog-head">
+          <div>
+            <p class="section-kicker">Старт</p>
+            <h2>Выбери цель на день</h2>
+          </div>
+        </div>
+        <div class="goal-options" aria-label="Сложность дневной цели">
+          <button class="goal-option" type="button" data-goal-mode="easy">
+            <strong>Легкий</strong>
+            <span>1 карточка в день</span>
+          </button>
+          <button class="goal-option" type="button" data-goal-mode="medium">
+            <strong>Средний</strong>
+            <span>7 карточек в день</span>
+          </button>
+          <button class="goal-option" type="button" data-goal-mode="hard">
+            <strong>Сложный</strong>
+            <span>15 карточек в день</span>
+          </button>
+        </div>
+      </section>
+    </dialog>
+
+    <dialog class="deck-dialog" id="songDialog">
+      <section class="deck-dialog-panel" aria-label="Создать карточки по песне">
+        <div class="dialog-head">
+          <div>
+            <p class="section-kicker">Песня</p>
+            <h2>Новые карточки</h2>
+          </div>
+          <button class="icon-button" id="closeSongButton" type="button" aria-label="Закрыть создание по песне">×</button>
+        </div>
+        <form class="creator-form" id="songForm">
+          <label class="word-field">
+            <span>Песня или исполнитель</span>
+            <input id="songTitleInput" type="text" autocomplete="off" placeholder="Например: Radiohead — Creep" />
+          </label>
+          <button class="soft-link-button" id="songLyricsLink" type="button">Найти песню с AI</button>
+          <div class="song-candidates" id="songCandidates" hidden></div>
+          <div class="song-folder-picker">
+            <div class="folder-box-head">
+              <h3>Куда сохранить</h3>
+              <span id="songFolderPreview">Только песни</span>
+            </div>
+            <p class="field-help">Выбери готовую папку. Если нужна новая, введи ее название ниже и нажми плюс.</p>
+            <div class="folder-tree song-folder-tree" id="songFolderTree" role="tree" aria-label="Выбор папки для песни"></div>
+            <div class="song-folder-create-row">
+              <label class="word-field">
+                <span>Новая подпапка</span>
+                <input id="songFolderInput" type="text" autocomplete="off" placeholder="Например: Radiohead / Creep" />
+              </label>
+              <button class="folder-add-button" id="addSongFolderButton" type="button" aria-label="Создать папку песни">+</button>
+            </div>
+          </div>
+          <label class="word-field">
+            <span>Текст или фразы песни</span>
+            <textarea id="songTextInput" rows="8" autocomplete="off" placeholder="Вставь сюда свои строки или фразы. Каждая строка станет отдельной карточкой."></textarea>
+          </label>
+          <p class="field-help">Лучше 5-24 строки за раз. Повторы слов приложение пропустит, чтобы не создавать одинаковые карточки.</p>
+          <button class="main-button" id="createSongButton" type="submit">Создать карточки</button>
+        </form>
+        <div class="status-box" id="songStatus" role="status">Готово к созданию карточек по песне.</div>
+      </section>
+    </dialog>
+
+    <template id="deckItemTemplate">
+      <article class="deck-item">
+        <label class="deck-select-box">
+          <input class="select-card-checkbox" type="checkbox" />
+          <span></span>
+        </label>
+        <div class="deck-thumb"></div>
+        <div>
+          <h3></h3>
+          <p></p>
+        </div>
+        <div class="deck-actions">
+          <button class="edit-card-button" type="button" aria-label="Изменить карточку">Изм.</button>
+          <button class="delete-card-button" type="button" aria-label="Удалить карточку">×</button>
+        </div>
+      </article>
+    </template>
+
+    <script src="app.js?v=46"></script>
+  </body>
+</html>

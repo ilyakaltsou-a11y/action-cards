@@ -1,0 +1,22 @@
+{
+  "$schema": "https://raw.githubusercontent.com/cloudflare/workers-sdk/refs/heads/main/packages/wrangler/config-schema.json",
+  "name": "action-cards",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-04-26",
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS"
+  },
+  "kv_namespaces": [
+    {
+      "binding": "CARDS_KV",
+      "id": "9fe16fa356cd49b6ad39e0e4851f4f36"
+    }
+  ],
+  "vars": {
+    "TEXT_MODEL": "gpt-5.4-mini",
+    "DEEPSEEK_MODEL": "deepseek-chat",
+    "IMAGE_MODEL": "gpt-image-1-mini",
+    "IMAGE_QUALITY": "medium"
+  }
+}
