@@ -15,6 +15,11 @@ The form asks for:
 - OpenAI Organization ID
 - how API credits will be used
 
+## Project Links
+
+- GitHub username: `ilyakaltsou-a11y`
+- Repository URL: https://github.com/ilyakaltsou-a11y/action-cards
+
 ## Draft Answers
 
 ### Why does this repository qualify?
