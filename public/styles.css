@@ -212,7 +212,7 @@ h2 {
 .polish-used-words {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
   margin-top: 12px;
 }
 
@@ -220,25 +220,28 @@ h2 {
 .polish-used-chip {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  min-height: 34px;
+  gap: 5px;
+  min-height: 28px;
   border: 1px solid rgba(24, 18, 15, 0.1);
   border-radius: 999px;
   background: rgba(246, 240, 230, 0.82);
   color: var(--ink);
-  font-size: 0.9rem;
+  font-size: 0.78rem;
   font-weight: 580;
-  padding: 0 12px;
+  padding: 0 7px 0 10px;
 }
 
 .polish-word-chip button {
-  width: 22px;
-  height: 22px;
+  width: 18px;
+  height: 18px;
   border: 0;
   border-radius: 50%;
   background: rgba(24, 18, 15, 0.08);
   color: rgba(24, 18, 15, 0.72);
+  font-size: 0.78rem;
   font-weight: 800;
+  line-height: 1;
+  padding: 0;
 }
 
 .polish-exercise-card,

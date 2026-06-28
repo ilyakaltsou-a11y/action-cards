@@ -227,7 +227,35 @@ async function suggestPolishWords(existingWords = [], count = 10) {
   return normalizePolishWords(result.words).slice(0, Math.max(1, Math.min(20, Number(count) || 10)));
 }
 
-async function createPolishExercise(words = [], count = 7, mode = "medium") {
+async function extractPolishWords(text = "", existingWords = []) {
+  const result = await deepseekJson([
+    {
+      role: "system",
+      content: [
+        "You extract useful Polish vocabulary from learner-provided Polish text.",
+        "Return only JSON exactly as {\"words\":[...]} .",
+        "The learner may paste one sentence or several sentences.",
+        "If the text contains Polish words, do not return an empty list.",
+        "Extract dictionary/base forms, not only surface forms.",
+        "For example, from 'Robię pracę domową z dzieckiem' extract robić, praca domowa, dziecko.",
+        "Include short useful two-word chunks when they behave like a phrase or are learned together.",
+        "Skip punctuation, names, duplicates, and words already listed.",
+        "For each item return: word, Russian translation, partOfSpeech, gender if relevant, level, short Russian notes, and useful forms object when useful.",
+      ].join(" "),
+    },
+    {
+      role: "user",
+      content: JSON.stringify({
+        text: String(text || "").trim().slice(0, 1200),
+        existingWords: existingWords.map(cleanPolishWord).filter(Boolean).slice(0, 200),
+      }),
+    },
+  ]);
+
+  return normalizePolishWords(result.words || result.vocabulary || result.items || result.entries).slice(0, 30);
+}
+
+async function createPolishExercise(words = [], count = 7, mode = "medium", recentExercises = []) {
   const vocabulary = normalizePolishWords(words).slice(0, 120);
   const selectedCount = Math.max(3, Math.min(10, Number(count) || 7));
   const cleanMode = ["easy", "medium", "hard"].includes(mode) ? mode : "medium";
@@ -245,10 +273,21 @@ async function createPolishExercise(words = [], count = 7, mode = "medium") {
         "The Russian prompt must be natural and clear.",
         "The expected Polish answer must be one natural sentence.",
         "Do not overload with rare new vocabulary. Add only obvious service words when necessary.",
+        "Avoid repeating the recent prompts, themes, and sentence patterns. Create a visibly different situation each time.",
+        "Use at least 3 words from the provided vocabulary when possible.",
         "Return exercise with promptRu, expectedPl, usedWords, grammarFocus, and hint in Russian.",
       ].join(" "),
     },
-    { role: "user", content: JSON.stringify({ vocabulary, count: selectedCount, mode: cleanMode, randomSeed: Math.random().toString(36).slice(2) }) },
+    {
+      role: "user",
+      content: JSON.stringify({
+        vocabulary,
+        count: selectedCount,
+        mode: cleanMode,
+        recentExercises: Array.isArray(recentExercises) ? recentExercises.slice(0, 8) : [],
+        randomSeed: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      }),
+    },
   ]);
 
   const exercise = result.exercise || result;
@@ -773,6 +812,27 @@ async function handlePolishSuggestWords(request, response) {
   }
 }
 
+async function handlePolishExtractWords(request, response) {
+  if (!DEEPSEEK_API_KEY) {
+    sendJson(response, 503, { error: "DEEPSEEK_API_KEY is not set" });
+    return;
+  }
+
+  try {
+    const body = await readJson(request);
+    const text = String(body.text || "").trim().slice(0, 1200);
+    if (!text) {
+      sendJson(response, 400, { error: "Text is required" });
+      return;
+    }
+    const words = await extractPolishWords(text, Array.isArray(body.existingWords) ? body.existingWords : []);
+    sendJson(response, 200, { words });
+  } catch (error) {
+    const message = error.name === "TimeoutError" || error.name === "AbortError" ? "DeepSeek timeout" : error.message;
+    sendJson(response, 500, { error: message });
+  }
+}
+
 async function handlePolishCreateExercise(request, response) {
   if (!DEEPSEEK_API_KEY) {
     sendJson(response, 503, { error: "DEEPSEEK_API_KEY is not set" });
@@ -781,7 +841,12 @@ async function handlePolishCreateExercise(request, response) {
 
   try {
     const body = await readJson(request);
-    const exercise = await createPolishExercise(Array.isArray(body.words) ? body.words : [], body.count, body.mode);
+    const exercise = await createPolishExercise(
+      Array.isArray(body.words) ? body.words : [],
+      body.count,
+      body.mode,
+      Array.isArray(body.recentExercises) ? body.recentExercises : []
+    );
     sendJson(response, 200, { exercise });
   } catch (error) {
     const message = error.name === "TimeoutError" || error.name === "AbortError" ? "DeepSeek timeout" : error.message;
@@ -908,6 +973,11 @@ const server = http.createServer((request, response) => {
 
   if (request.method === "POST" && request.url === "/api/polish/suggest-words") {
     handlePolishSuggestWords(request, response);
+    return;
+  }
+
+  if (request.method === "POST" && request.url === "/api/polish/extract-words") {
+    handlePolishExtractWords(request, response);
     return;
   }
 

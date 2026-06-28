@@ -40,6 +40,10 @@ export default {
         return handlePolishSuggestWords(request, env);
       }
 
+      if (request.method === "POST" && url.pathname === "/api/polish/extract-words") {
+        return handlePolishExtractWords(request, env);
+      }
+
       if (request.method === "POST" && url.pathname === "/api/polish/create-exercise") {
         return handlePolishCreateExercise(request, env);
       }
@@ -245,7 +249,35 @@ async function suggestPolishWords(env, existingWords = [], count = 10) {
   return normalizePolishWords(result.words).slice(0, Math.max(1, Math.min(20, Number(count) || 10)));
 }
 
-async function createPolishExercise(env, words = [], count = 7, mode = "medium") {
+async function extractPolishWords(env, text = "", existingWords = []) {
+  const result = await deepseekJson(env, [
+    {
+      role: "system",
+      content: [
+        "You extract useful Polish vocabulary from learner-provided Polish text.",
+        "Return only JSON exactly as {\"words\":[...]} .",
+        "The learner may paste one sentence or several sentences.",
+        "If the text contains Polish words, do not return an empty list.",
+        "Extract dictionary/base forms, not only surface forms.",
+        "For example, from 'Robię pracę domową z dzieckiem' extract robić, praca domowa, dziecko.",
+        "Include short useful two-word chunks when they behave like a phrase or are learned together.",
+        "Skip punctuation, names, duplicates, and words already listed.",
+        "For each item return: word, Russian translation, partOfSpeech, gender if relevant, level, short Russian notes, and useful forms object when useful.",
+      ].join(" "),
+    },
+    {
+      role: "user",
+      content: JSON.stringify({
+        text: String(text || "").trim().slice(0, 1200),
+        existingWords: existingWords.map(cleanPolishWord).filter(Boolean).slice(0, 200),
+      }),
+    },
+  ]);
+
+  return normalizePolishWords(result.words || result.vocabulary || result.items || result.entries).slice(0, 30);
+}
+
+async function createPolishExercise(env, words = [], count = 7, mode = "medium", recentExercises = []) {
   const vocabulary = normalizePolishWords(words).slice(0, 120);
   const selectedCount = Math.max(3, Math.min(10, Number(count) || 7));
   const cleanMode = ["easy", "medium", "hard"].includes(mode) ? mode : "medium";
@@ -263,10 +295,21 @@ async function createPolishExercise(env, words = [], count = 7, mode = "medium")
         "The Russian prompt must be natural and clear.",
         "The expected Polish answer must be one natural sentence.",
         "Do not overload with rare new vocabulary. Add only obvious service words when necessary.",
+        "Avoid repeating the recent prompts, themes, and sentence patterns. Create a visibly different situation each time.",
+        "Use at least 3 words from the provided vocabulary when possible.",
         "Return exercise with promptRu, expectedPl, usedWords, grammarFocus, and hint in Russian.",
       ].join(" "),
     },
-    { role: "user", content: JSON.stringify({ vocabulary, count: selectedCount, mode: cleanMode, randomSeed: crypto.randomUUID() }) },
+    {
+      role: "user",
+      content: JSON.stringify({
+        vocabulary,
+        count: selectedCount,
+        mode: cleanMode,
+        recentExercises: Array.isArray(recentExercises) ? recentExercises.slice(0, 8) : [],
+        randomSeed: crypto.randomUUID(),
+      }),
+    },
   ]);
 
   const exercise = result.exercise || result;
@@ -724,13 +767,33 @@ async function handlePolishSuggestWords(request, env) {
   return json({ words });
 }
 
+async function handlePolishExtractWords(request, env) {
+  if (!env.DEEPSEEK_API_KEY) {
+    return json({ error: "DEEPSEEK_API_KEY is not set" }, 503);
+  }
+
+  const body = await request.json();
+  const text = String(body.text || "").trim().slice(0, 1200);
+  if (!text) {
+    return json({ error: "Text is required" }, 400);
+  }
+  const words = await extractPolishWords(env, text, Array.isArray(body.existingWords) ? body.existingWords : []);
+  return json({ words });
+}
+
 async function handlePolishCreateExercise(request, env) {
   if (!env.DEEPSEEK_API_KEY) {
     return json({ error: "DEEPSEEK_API_KEY is not set" }, 503);
   }
 
   const body = await request.json();
-  const exercise = await createPolishExercise(env, Array.isArray(body.words) ? body.words : [], body.count, body.mode);
+  const exercise = await createPolishExercise(
+    env,
+    Array.isArray(body.words) ? body.words : [],
+    body.count,
+    body.mode,
+    Array.isArray(body.recentExercises) ? body.recentExercises : []
+  );
   return json({ exercise });
 }
 

@@ -1831,6 +1831,26 @@ function parsePolishWordLines(text) {
     .filter(Boolean);
 }
 
+function shouldExtractPolishWordsWithAi(text = "") {
+  const cleanText = String(text || "").trim();
+  if (!cleanText) return false;
+  const lines = cleanText.split(/\n+/).map((line) => line.trim()).filter(Boolean);
+  const hasSentencePunctuation = /[.!?]/.test(cleanText);
+  const hasLongLine = lines.some((line) => line.split(/\s+/).length >= 4 && !/\s[-–—:]\s/.test(line));
+  return hasSentencePunctuation || hasLongLine;
+}
+
+function formatPolishWordsForInput(words = []) {
+  return words
+    .map((word) => {
+      const entry = normalizePolishWordEntry(word);
+      if (!entry) return "";
+      return [entry.word, entry.translation].filter(Boolean).join(" - ");
+    })
+    .filter(Boolean)
+    .join("\n");
+}
+
 function mergePolishWords(words = []) {
   state.polish = normalizePolishState(state.polish);
   const byKey = new Map(state.polish.words.map((word) => [polishWordKey(word.word), word]));
@@ -1841,20 +1861,46 @@ function mergePolishWords(words = []) {
     byKey.set(key, { ...(byKey.get(key) || {}), ...normalized });
   });
   state.polish.words = [...byKey.values()].sort((left, right) => left.word.localeCompare(right.word, "pl"));
+  return words.map(normalizePolishWordEntry).filter(Boolean).length;
 }
 
-function addPolishWordsFromInput() {
-  const words = parsePolishWordLines(els.polishWordsInput.value);
+async function addPolishWordsFromInput() {
+  const text = els.polishWordsInput.value;
+  let words = parsePolishWordLines(text);
   if (!words.length) {
     setPolishStatus("Напиши хотя бы одно польское слово.", "warn");
     els.polishWordsInput.focus();
     return;
   }
-  mergePolishWords(words);
-  els.polishWordsInput.value = "";
-  saveCards();
-  renderPolish();
-  setPolishStatus(`Добавлено слов: ${words.length}.`, "ok");
+
+  els.addPolishWordsButton.disabled = true;
+  try {
+    if (shouldExtractPolishWordsWithAi(text)) {
+      setPolishStatus("AI разбирает текст на полезные польские слова и связки.", "work");
+      await updateAiStatus();
+      if (!state.deepSeekOnline) throw new Error("DEEPSEEK_API_KEY is not set");
+      const data = await requestPolishApi("/api/polish/extract-words", {
+        text,
+        existingWords: state.polish.words.map((word) => word.word),
+      });
+      words = Array.isArray(data.words) ? data.words : [];
+    }
+
+    if (!words.length) {
+      setPolishStatus("AI не нашел новых слов в этом тексте.", "warn");
+      return;
+    }
+
+    mergePolishWords(words);
+    els.polishWordsInput.value = "";
+    saveCards();
+    renderPolish();
+    setPolishStatus(`Добавлено слов: ${words.length}.`, "ok");
+  } catch (error) {
+    setPolishStatus(`Не получилось разобрать слова: ${friendlyError(error.message)}.`, "error");
+  } finally {
+    els.addPolishWordsButton.disabled = false;
+  }
 }
 
 function removePolishWord(wordId) {
@@ -1876,11 +1922,12 @@ function renderPolish() {
     empty.textContent = "Пока нет польских слов. Добавь свои или попроси AI предложить базовые.";
     els.polishWordList.append(empty);
   } else {
-    state.polish.words.forEach((word) => {
+    const visibleWords = state.polish.words.slice(0, 80);
+    visibleWords.forEach((word) => {
       const chip = document.createElement("span");
       chip.className = "polish-word-chip";
-      const translation = word.translation ? ` · ${word.translation}` : "";
-      chip.innerHTML = `<strong>${word.word}</strong><span>${translation}</span>`;
+      chip.title = [word.translation, word.partOfSpeech, word.gender].filter(Boolean).join(" · ");
+      chip.innerHTML = `<strong>${word.word}</strong>`;
       const deleteButton = document.createElement("button");
       deleteButton.type = "button";
       deleteButton.setAttribute("aria-label", `Удалить слово ${word.word}`);
@@ -1976,7 +2023,7 @@ async function requestPolishApi(path, payload) {
 
 async function suggestPolishWords() {
   els.suggestPolishWordsButton.disabled = true;
-  setPolishStatus("AI подбирает 10 базовых слов для польского.", "work");
+  setPolishStatus("AI подбирает 10 базовых слов и вставит их в поле.", "work");
   try {
     await updateAiStatus();
     if (!state.deepSeekOnline) throw new Error("DEEPSEEK_API_KEY is not set");
@@ -1985,15 +2032,31 @@ async function suggestPolishWords() {
       count: 10,
     });
     const words = Array.isArray(data.words) ? data.words : [];
-    mergePolishWords(words);
-    saveCards();
-    renderPolish();
-    setPolishStatus(`AI добавил слов: ${words.length}.`, "ok");
+    const suggestedText = formatPolishWordsForInput(words);
+    els.polishWordsInput.value = suggestedText;
+    els.polishWordsInput.focus();
+    setPolishStatus(words.length ? "Проверь слова в поле и нажми «Добавить мои слова»." : "AI не нашел новых слов. Попробуй позже.", words.length ? "ok" : "warn");
   } catch (error) {
     setPolishStatus(`Не получилось добавить слова: ${friendlyError(error.message)}.`, "error");
   } finally {
     els.suggestPolishWordsButton.disabled = false;
   }
+}
+
+function choosePolishExerciseWords(count = 7) {
+  const words = normalizePolishState(state.polish).words;
+  const recentUsed = new Set(
+    state.polish.exercises
+      .slice(0, 4)
+      .flatMap((exercise) => exercise.usedWords || [])
+      .map(polishWordKey)
+  );
+  const scored = words.map((word) => ({
+    word,
+    score: (recentUsed.has(polishWordKey(word.word)) ? 0 : 100) + Math.random() * 40,
+  }));
+  scored.sort((left, right) => right.score - left.score);
+  return scored.slice(0, Math.max(3, Math.min(count, words.length))).map((item) => item.word);
 }
 
 async function createPolishExercise() {
@@ -2009,10 +2072,17 @@ async function createPolishExercise() {
   try {
     await updateAiStatus();
     if (!state.deepSeekOnline) throw new Error("DEEPSEEK_API_KEY is not set");
+    const count = Number(els.polishExerciseCount.value) || 7;
+    const selectedWords = choosePolishExerciseWords(count);
     const data = await requestPolishApi("/api/polish/create-exercise", {
-      words: state.polish.words,
-      count: Number(els.polishExerciseCount.value) || 7,
+      words: selectedWords,
+      count,
       mode: els.polishExerciseMode.value || "medium",
+      recentExercises: state.polish.exercises.slice(0, 8).map((exercise) => ({
+        promptRu: exercise.promptRu,
+        expectedPl: exercise.expectedPl,
+        usedWords: exercise.usedWords,
+      })),
     });
     const exercise = normalizePolishExercise({ ...data.exercise, mode: els.polishExerciseMode.value });
     if (!exercise) throw new Error("AI returned no exercise");
