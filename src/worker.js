@@ -225,14 +225,17 @@ function normalizePolishWords(words = []) {
 }
 
 async function suggestPolishWords(env, existingWords = [], count = 10) {
+  const cleanExistingWords = existingWords.map(cleanPolishWord).filter(Boolean).slice(0, 200);
+  const requestedCount = Math.max(1, Math.min(20, Number(count) || 10));
   const result = await deepseekJson(env, [
     {
       role: "system",
       content: [
         "You are a careful Polish teacher for a Russian-speaking adult beginner.",
-        "Return only JSON.",
+        "Return only JSON exactly as {\"words\":[...]} .",
         "Suggest practical Polish vocabulary for sentence-building practice.",
         "Avoid words already listed by the learner.",
+        "Never return an empty list unless every A1-A2 word is already listed.",
         "Prefer A1-A2 everyday words and verbs that combine well in simple sentences.",
         "For each word return: word, Russian translation, partOfSpeech, gender if relevant, level, short Russian notes, and useful forms object when useful.",
       ].join(" "),
@@ -240,13 +243,34 @@ async function suggestPolishWords(env, existingWords = [], count = 10) {
     {
       role: "user",
       content: JSON.stringify({
-        existingWords: existingWords.map(cleanPolishWord).filter(Boolean).slice(0, 200),
-        count: Math.max(1, Math.min(20, Number(count) || 10)),
+        existingWords: cleanExistingWords,
+        count: requestedCount,
       }),
     },
   ]);
 
-  return normalizePolishWords(result.words).slice(0, Math.max(1, Math.min(20, Number(count) || 10)));
+  const words = normalizePolishWords(result.words || result.vocabulary || result.items || result.suggestions || result.entries);
+  if (words.length) return words.slice(0, requestedCount);
+
+  return fallbackPolishWords(cleanExistingWords, requestedCount);
+}
+
+function fallbackPolishWords(existingWords = [], count = 10) {
+  const existing = new Set(existingWords.map(cleanPolishWord));
+  return normalizePolishWords([
+    { word: "być", translation: "быть", partOfSpeech: "verb", level: "A1", notes: "самый важный глагол", forms: { present: "jestem, jesteś, jest, jesteśmy, jesteście, są" } },
+    { word: "mieć", translation: "иметь", partOfSpeech: "verb", level: "A1", notes: "часто нужен для простых предложений" },
+    { word: "robić", translation: "делать", partOfSpeech: "verb", level: "A1", notes: "базовый глагол действия" },
+    { word: "iść", translation: "идти", partOfSpeech: "verb", level: "A1", notes: "движение пешком" },
+    { word: "jeść", translation: "есть", partOfSpeech: "verb", level: "A1", notes: "еда" },
+    { word: "pić", translation: "пить", partOfSpeech: "verb", level: "A1", notes: "напитки" },
+    { word: "dom", translation: "дом", partOfSpeech: "noun", gender: "męski", level: "A1" },
+    { word: "praca", translation: "работа", partOfSpeech: "noun", gender: "żeński", level: "A1" },
+    { word: "sklep", translation: "магазин", partOfSpeech: "noun", gender: "męski", level: "A1" },
+    { word: "dziecko", translation: "ребёнок", partOfSpeech: "noun", gender: "nijaki", level: "A1" },
+    { word: "rodzina", translation: "семья", partOfSpeech: "noun", gender: "żeński", level: "A1" },
+    { word: "przyjaciel", translation: "друг", partOfSpeech: "noun", gender: "męski", level: "A1" },
+  ].filter((entry) => !existing.has(cleanPolishWord(entry.word)))).slice(0, count);
 }
 
 async function extractPolishWords(env, text = "", existingWords = []) {
