@@ -7,11 +7,11 @@
     <title>Карточки действий</title>
     <script>
       if (window.location.protocol === "file:") {
-        window.location.replace(`http://127.0.0.1:5176/${window.location.search || "?v=47"}`);
+        window.location.replace(`http://127.0.0.1:5176/${window.location.search || "?v=48"}`);
       }
     </script>
     <link rel="manifest" href="manifest.webmanifest" />
-    <link rel="stylesheet" href="styles.css?v=47" />
+    <link rel="stylesheet" href="styles.css?v=48" />
   </head>
   <body>
     <div class="app-shell">
@@ -208,7 +208,11 @@
             <button class="soft-button" id="suggestPolishWordsButton" type="button">AI предложит 10 слов</button>
           </div>
           <p class="field-help">Можно вставить список слов или несколько польских предложений. AI разберёт текст на отдельные слова и полезные связки.</p>
-          <div class="polish-word-list" id="polishWordList"></div>
+          <button class="polish-dictionary-button" id="openPolishDictionaryButton" type="button">
+            <span>Словарь</span>
+            <strong id="polishDictionarySummary">0 слов · Открыть</strong>
+            <small id="polishDictionaryPreview">Пока пусто</small>
+          </button>
         </section>
 
         <section class="panel polish-panel polish-trainer" aria-label="Тренировка польского">
@@ -282,6 +286,37 @@
           </div>
         </div>
         <div class="deck-list" id="deckList"></div>
+      </section>
+    </dialog>
+
+    <dialog class="deck-dialog" id="polishDictionaryDialog">
+      <section class="deck-dialog-panel polish-dictionary-panel" aria-label="Польский словарь">
+        <div class="dialog-head">
+          <div>
+            <p class="section-kicker">Polski</p>
+            <h2>Словарь</h2>
+          </div>
+          <button class="icon-button" id="closePolishDictionaryButton" type="button" aria-label="Закрыть словарь">×</button>
+        </div>
+        <div class="polish-dictionary-tools">
+          <label>
+            <span>Поиск</span>
+            <input id="polishDictionarySearch" type="search" autocomplete="off" placeholder="robić, praca, дом" />
+          </label>
+          <label>
+            <span>Тип</span>
+            <select id="polishDictionaryFilter">
+              <option value="all">Все слова</option>
+              <option value="verb">Глаголы</option>
+              <option value="noun">Существительные</option>
+              <option value="phrase">Фразы</option>
+              <option value="adjective">Прилагательные</option>
+              <option value="other">Другое</option>
+            </select>
+          </label>
+        </div>
+        <p class="field-help" id="polishDictionaryCount">0 слов</p>
+        <div class="polish-dictionary-list" id="polishDictionaryList"></div>
       </section>
     </dialog>
 
@@ -423,6 +458,6 @@
       </article>
     </template>
 
-    <script src="app.js?v=47"></script>
+    <script src="app.js?v=48"></script>
   </body>
 </html>

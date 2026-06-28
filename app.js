@@ -5,7 +5,7 @@ const FOLDER_KEY = "action-cards:folder:v1";
 const ACTIVITY_KEY = "action-cards:activity:v1";
 const LANGUAGE_KEY = "action-cards:language:v1";
 const POLISH_KEY = "action-cards:polish:v1";
-const DEFAULT_CARDS_URL = "default-cards.json?v=47";
+const DEFAULT_CARDS_URL = "default-cards.json?v=48";
 const SONG_ROOT_FOLDER = "Только песни";
 const AGAIN_REVIEW_DELAY = 45 * 1000;
 const CREATE_CARD_TIMEOUT = 140 * 1000;
@@ -160,7 +160,15 @@ const els = {
   polishWordsInput: document.querySelector("#polishWordsInput"),
   addPolishWordsButton: document.querySelector("#addPolishWordsButton"),
   suggestPolishWordsButton: document.querySelector("#suggestPolishWordsButton"),
-  polishWordList: document.querySelector("#polishWordList"),
+  openPolishDictionaryButton: document.querySelector("#openPolishDictionaryButton"),
+  polishDictionarySummary: document.querySelector("#polishDictionarySummary"),
+  polishDictionaryPreview: document.querySelector("#polishDictionaryPreview"),
+  polishDictionaryDialog: document.querySelector("#polishDictionaryDialog"),
+  closePolishDictionaryButton: document.querySelector("#closePolishDictionaryButton"),
+  polishDictionarySearch: document.querySelector("#polishDictionarySearch"),
+  polishDictionaryFilter: document.querySelector("#polishDictionaryFilter"),
+  polishDictionaryCount: document.querySelector("#polishDictionaryCount"),
+  polishDictionaryList: document.querySelector("#polishDictionaryList"),
   polishExerciseCount: document.querySelector("#polishExerciseCount"),
   polishExerciseMode: document.querySelector("#polishExerciseMode"),
   createPolishExerciseButton: document.querySelector("#createPolishExerciseButton"),
@@ -1911,35 +1919,94 @@ function removePolishWord(wordId) {
 }
 
 function renderPolish() {
-  if (!els.polishWordList) return;
+  if (!els.polishDictionarySummary) return;
   state.polish = normalizePolishState(state.polish);
-  els.polishWordCount.textContent = `${state.polish.words.length} слов`;
-  els.polishWordList.replaceChildren();
-
-  if (!state.polish.words.length) {
-    const empty = document.createElement("p");
-    empty.className = "empty-list";
-    empty.textContent = "Пока нет польских слов. Добавь свои или попроси AI предложить базовые.";
-    els.polishWordList.append(empty);
-  } else {
-    const visibleWords = state.polish.words.slice(0, 80);
-    visibleWords.forEach((word) => {
-      const chip = document.createElement("span");
-      chip.className = "polish-word-chip";
-      chip.title = [word.translation, word.partOfSpeech, word.gender].filter(Boolean).join(" · ");
-      chip.innerHTML = `<strong>${word.word}</strong>`;
-      const deleteButton = document.createElement("button");
-      deleteButton.type = "button";
-      deleteButton.setAttribute("aria-label", `Удалить слово ${word.word}`);
-      deleteButton.textContent = "×";
-      deleteButton.addEventListener("click", () => removePolishWord(word.id));
-      chip.append(deleteButton);
-      els.polishWordList.append(chip);
-    });
-  }
+  const wordCount = state.polish.words.length;
+  els.polishWordCount.textContent = `${wordCount} слов`;
+  els.polishDictionarySummary.textContent = `${wordCount} слов · Открыть`;
+  els.polishDictionaryPreview.textContent = wordCount
+    ? state.polish.words.slice(0, 6).map((word) => word.word).join(", ")
+    : "Пока пусто";
+  renderPolishDictionary();
 
   renderPolishExercise();
   renderPolishFeedback();
+}
+
+function polishWordType(word = {}) {
+  const part = String(word.partOfSpeech || "").toLowerCase();
+  if (part.includes("verb") || part.includes("глаг")) return "verb";
+  if (part.includes("noun") || part.includes("существ")) return "noun";
+  if (part.includes("phrase") || part.includes("фраз") || String(word.word || "").includes(" ")) return "phrase";
+  if (part.includes("adj") || part.includes("прилаг")) return "adjective";
+  return "other";
+}
+
+function polishWordTypeLabel(type) {
+  return {
+    verb: "Глагол",
+    noun: "Существительное",
+    phrase: "Фраза",
+    adjective: "Прилагательное",
+    other: "Другое",
+  }[type] || "Другое";
+}
+
+function filteredPolishWords() {
+  const query = normalizeFreeText(els.polishDictionarySearch?.value || "", 80).toLowerCase();
+  const filter = els.polishDictionaryFilter?.value || "all";
+
+  return normalizePolishState(state.polish).words.filter((word) => {
+    const type = polishWordType(word);
+    const haystack = [word.word, word.translation, word.partOfSpeech, word.gender, word.notes].join(" ").toLowerCase();
+    return (filter === "all" || type === filter) && (!query || haystack.includes(query));
+  });
+}
+
+function renderPolishDictionary() {
+  if (!els.polishDictionaryList) return;
+  const words = filteredPolishWords();
+  const total = state.polish.words.length;
+  els.polishDictionaryCount.textContent = `${words.length} из ${total} слов`;
+  els.polishDictionaryList.replaceChildren();
+
+  if (!words.length) {
+    const empty = document.createElement("p");
+    empty.className = "empty-list";
+    empty.textContent = total ? "По этому поиску ничего не найдено." : "Словарь пустой.";
+    els.polishDictionaryList.append(empty);
+    return;
+  }
+
+  words.forEach((word) => {
+    const row = document.createElement("article");
+    row.className = "polish-dictionary-row";
+    const type = polishWordType(word);
+    row.innerHTML = `
+      <div>
+        <h3>${escapeHtml(word.word)}</h3>
+        <p>${escapeHtml([word.translation, polishWordTypeLabel(type), word.gender].filter(Boolean).join(" · "))}</p>
+      </div>
+    `;
+    const deleteButton = document.createElement("button");
+    deleteButton.type = "button";
+    deleteButton.className = "delete-card-button";
+    deleteButton.setAttribute("aria-label", `Удалить слово ${word.word}`);
+    deleteButton.textContent = "×";
+    deleteButton.addEventListener("click", () => removePolishWord(word.id));
+    row.append(deleteButton);
+    els.polishDictionaryList.append(row);
+  });
+}
+
+function openPolishDictionary() {
+  renderPolishDictionary();
+  openAppDialog(els.polishDictionaryDialog);
+  window.setTimeout(() => els.polishDictionarySearch?.focus(), 80);
+}
+
+function closePolishDictionary() {
+  closeAppDialog(els.polishDictionaryDialog);
 }
 
 function renderPolishExercise() {
@@ -2725,6 +2792,13 @@ els.englishModeButton.addEventListener("click", () => setLanguage("english"));
 els.polishModeButton.addEventListener("click", () => setLanguage("polish"));
 els.addPolishWordsButton.addEventListener("click", addPolishWordsFromInput);
 els.suggestPolishWordsButton.addEventListener("click", suggestPolishWords);
+els.openPolishDictionaryButton.addEventListener("click", openPolishDictionary);
+els.closePolishDictionaryButton.addEventListener("click", closePolishDictionary);
+els.polishDictionarySearch.addEventListener("input", renderPolishDictionary);
+els.polishDictionaryFilter.addEventListener("change", renderPolishDictionary);
+els.polishDictionaryDialog.addEventListener("click", (event) => {
+  if (event.target === els.polishDictionaryDialog) closePolishDictionary();
+});
 els.createPolishExerciseButton.addEventListener("click", createPolishExercise);
 els.checkPolishAnswerButton.addEventListener("click", checkPolishAnswer);
 
