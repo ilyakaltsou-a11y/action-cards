@@ -36,6 +36,18 @@ export default {
         return handleSongOptions(request, env);
       }
 
+      if (request.method === "POST" && url.pathname === "/api/polish/suggest-words") {
+        return handlePolishSuggestWords(request, env);
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/polish/create-exercise") {
+        return handlePolishCreateExercise(request, env);
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/polish/check-answer") {
+        return handlePolishCheckAnswer(request, env);
+      }
+
       if (request.method === "GET" && url.pathname === "/api/cards") {
         return handleGetCards(url, env);
       }
@@ -82,6 +94,15 @@ function cleanPreference(value) {
 
 function cleanTitle(value) {
   return String(value || "").trim().replace(/\s+/g, " ").slice(0, 120);
+}
+
+function cleanPolishWord(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-ząćęłńóśźż -]/gi, "")
+    .replace(/\s+/g, " ")
+    .slice(0, 60);
 }
 
 function cleanProfile(profile) {
@@ -176,6 +197,125 @@ async function findSongOptions(env, query) {
         .filter((candidate) => candidate.artist || candidate.title)
         .slice(0, 5)
     : [];
+}
+
+function normalizePolishWords(words = []) {
+  const seen = new Set();
+  return (Array.isArray(words) ? words : [])
+    .map((entry) => {
+      const word = cleanPolishWord(entry.word || entry.polish || entry);
+      if (!word || seen.has(word)) return null;
+      seen.add(word);
+      return {
+        word,
+        translation: cleanTitle(entry.translation || entry.ru || ""),
+        partOfSpeech: cleanTitle(entry.partOfSpeech || entry.pos || ""),
+        gender: cleanTitle(entry.gender || ""),
+        level: cleanTitle(entry.level || "A1"),
+        notes: String(entry.notes || "").trim().replace(/\s+/g, " ").slice(0, 180),
+        forms: entry.forms && typeof entry.forms === "object" ? entry.forms : {},
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 80);
+}
+
+async function suggestPolishWords(env, existingWords = [], count = 10) {
+  const result = await deepseekJson(env, [
+    {
+      role: "system",
+      content: [
+        "You are a careful Polish teacher for a Russian-speaking adult beginner.",
+        "Return only JSON.",
+        "Suggest practical Polish vocabulary for sentence-building practice.",
+        "Avoid words already listed by the learner.",
+        "Prefer A1-A2 everyday words and verbs that combine well in simple sentences.",
+        "For each word return: word, Russian translation, partOfSpeech, gender if relevant, level, short Russian notes, and useful forms object when useful.",
+      ].join(" "),
+    },
+    {
+      role: "user",
+      content: JSON.stringify({
+        existingWords: existingWords.map(cleanPolishWord).filter(Boolean).slice(0, 200),
+        count: Math.max(1, Math.min(20, Number(count) || 10)),
+      }),
+    },
+  ]);
+
+  return normalizePolishWords(result.words).slice(0, Math.max(1, Math.min(20, Number(count) || 10)));
+}
+
+async function createPolishExercise(env, words = [], count = 7, mode = "medium") {
+  const vocabulary = normalizePolishWords(words).slice(0, 120);
+  const selectedCount = Math.max(3, Math.min(10, Number(count) || 7));
+  const cleanMode = ["easy", "medium", "hard"].includes(mode) ? mode : "medium";
+  const result = await deepseekJson(env, [
+    {
+      role: "system",
+      content: [
+        "You create one Russian-to-Polish translation exercise.",
+        "Return only JSON.",
+        "The learner is Russian-speaking and studies Polish grammar through sentence generation.",
+        "Use mostly the learner's active vocabulary.",
+        "Easy mode: about 90% learner vocabulary plus necessary function words.",
+        "Medium mode: use learner vocabulary and train one or two new grammatical forms.",
+        "Hard mode: use learner vocabulary with cases, tense, pronouns, or word order challenges.",
+        "The Russian prompt must be natural and clear.",
+        "The expected Polish answer must be one natural sentence.",
+        "Do not overload with rare new vocabulary. Add only obvious service words when necessary.",
+        "Return exercise with promptRu, expectedPl, usedWords, grammarFocus, and hint in Russian.",
+      ].join(" "),
+    },
+    { role: "user", content: JSON.stringify({ vocabulary, count: selectedCount, mode: cleanMode, randomSeed: crypto.randomUUID() }) },
+  ]);
+
+  const exercise = result.exercise || result;
+  return {
+    promptRu: cleanTitle(exercise.promptRu).slice(0, 260),
+    expectedPl: String(exercise.expectedPl || "").trim().replace(/\s+/g, " ").slice(0, 260),
+    usedWords: Array.isArray(exercise.usedWords) ? exercise.usedWords.map(cleanPolishWord).filter(Boolean).slice(0, 16) : [],
+    grammarFocus: Array.isArray(exercise.grammarFocus) ? exercise.grammarFocus.map((item) => cleanTitle(item).slice(0, 100)).filter(Boolean).slice(0, 8) : [],
+    hint: String(exercise.hint || "").trim().replace(/\s+/g, " ").slice(0, 220),
+  };
+}
+
+async function checkPolishAnswer(env, exercise = {}, answer = "", words = []) {
+  const result = await deepseekJson(env, [
+    {
+      role: "system",
+      content: [
+        "You check a Russian-to-Polish sentence exercise.",
+        "Return only JSON.",
+        "Be strict about Polish cases, verb conjugation, adjective agreement, prepositions, and word order, but accept natural alternative Polish phrasing.",
+        "Explain mistakes in Russian in a short practical way.",
+        "Return isCorrect, score 0-100, correctedAnswer, mistakes array, and explanationRu.",
+        "Each mistake should include user, correct, reasonRu, and grammarPoint.",
+      ].join(" "),
+    },
+    {
+      role: "user",
+      content: JSON.stringify({
+        exercise,
+        learnerAnswer: String(answer || "").trim().replace(/\s+/g, " ").slice(0, 320),
+        activeVocabulary: normalizePolishWords(words).slice(0, 120),
+      }),
+    },
+  ]);
+
+  return {
+    isCorrect: Boolean(result.isCorrect),
+    score: Math.max(0, Math.min(100, Number(result.score) || 0)),
+    correctedAnswer: String(result.correctedAnswer || exercise.expectedPl || "").trim().replace(/\s+/g, " ").slice(0, 320),
+    mistakes: Array.isArray(result.mistakes)
+      ? result.mistakes.map((mistake) => ({
+          user: String(mistake.user || "").trim().slice(0, 120),
+          correct: String(mistake.correct || "").trim().slice(0, 120),
+          reasonRu: String(mistake.reasonRu || "").trim().replace(/\s+/g, " ").slice(0, 240),
+          grammarPoint: String(mistake.grammarPoint || "").trim().slice(0, 80),
+        })).slice(0, 8)
+      : [],
+    explanationRu: String(result.explanationRu || "").trim().replace(/\s+/g, " ").slice(0, 420),
+  };
 }
 
 async function openaiResponses(env, body) {
@@ -574,6 +714,40 @@ async function handleSongOptions(request, env) {
   return json({ candidates });
 }
 
+async function handlePolishSuggestWords(request, env) {
+  if (!env.DEEPSEEK_API_KEY) {
+    return json({ error: "DEEPSEEK_API_KEY is not set" }, 503);
+  }
+
+  const body = await request.json();
+  const words = await suggestPolishWords(env, Array.isArray(body.existingWords) ? body.existingWords : [], body.count);
+  return json({ words });
+}
+
+async function handlePolishCreateExercise(request, env) {
+  if (!env.DEEPSEEK_API_KEY) {
+    return json({ error: "DEEPSEEK_API_KEY is not set" }, 503);
+  }
+
+  const body = await request.json();
+  const exercise = await createPolishExercise(env, Array.isArray(body.words) ? body.words : [], body.count, body.mode);
+  return json({ exercise });
+}
+
+async function handlePolishCheckAnswer(request, env) {
+  if (!env.DEEPSEEK_API_KEY) {
+    return json({ error: "DEEPSEEK_API_KEY is not set" }, 503);
+  }
+
+  const body = await request.json();
+  const answer = String(body.answer || "").trim().replace(/\s+/g, " ").slice(0, 320);
+  if (!answer) {
+    return json({ error: "Answer is required" }, 400);
+  }
+  const feedback = await checkPolishAnswer(env, body.exercise || {}, answer, Array.isArray(body.words) ? body.words : []);
+  return json(feedback);
+}
+
 async function handleGetCards(url, env) {
   const profile = cleanProfile(url.searchParams.get("profile"));
   if (!profile) {
@@ -585,6 +759,7 @@ async function handleGetCards(url, env) {
     cards: Array.isArray(data?.cards) ? data.cards : [],
     folders: Array.isArray(data?.folders) ? data.folders : [],
     activity: data?.activity && typeof data.activity === "object" ? data.activity : { days: {}, updatedAt: 0 },
+    polish: data?.polish && typeof data.polish === "object" ? data.polish : { words: [], exercises: [], currentExercise: null },
   });
 }
 
@@ -598,9 +773,10 @@ async function handleSaveCards(request, env) {
   const cards = Array.isArray(body.cards) ? body.cards : [];
   const folders = Array.isArray(body.folders) ? body.folders : [];
   const activity = body.activity && typeof body.activity === "object" ? body.activity : { days: {}, updatedAt: 0 };
+  const polish = body.polish && typeof body.polish === "object" ? body.polish : { words: [], exercises: [], currentExercise: null };
   await env.CARDS_KV.put(
     `profile:${profile}`,
-    JSON.stringify({ cards, folders, activity, updatedAt: new Date().toISOString() })
+    JSON.stringify({ cards, folders, activity, polish, updatedAt: new Date().toISOString() })
   );
   return json({ ok: true });
 }

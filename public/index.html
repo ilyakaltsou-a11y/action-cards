@@ -7,11 +7,11 @@
     <title>Карточки действий</title>
     <script>
       if (window.location.protocol === "file:") {
-        window.location.replace(`http://127.0.0.1:5176/${window.location.search || "?v=46"}`);
+        window.location.replace(`http://127.0.0.1:5176/${window.location.search || "?v=47"}`);
       }
     </script>
     <link rel="manifest" href="manifest.webmanifest" />
-    <link rel="stylesheet" href="styles.css?v=46" />
+    <link rel="stylesheet" href="styles.css?v=47" />
   </head>
   <body>
     <div class="app-shell">
@@ -29,8 +29,12 @@
           <button class="menu-button" id="openSettingsButton" type="button" aria-label="Открыть настройки">☰</button>
         </div>
       </header>
+      <nav class="language-tabs" aria-label="Выбор языка">
+        <button class="language-tab" id="englishModeButton" type="button" data-language="english">English</button>
+        <button class="language-tab" id="polishModeButton" type="button" data-language="polish">Polski</button>
+      </nav>
 
-      <main class="app-grid">
+      <main class="app-grid english-view" id="englishView">
         <section class="study-card panel" aria-label="Тренировка карточек">
           <div class="panel-head">
             <div>
@@ -174,6 +178,80 @@
             <span>Открыть карточки</span>
             <strong id="deckSummary">0 карточек</strong>
           </button>
+        </section>
+      </main>
+
+      <main class="polish-view" id="polishView" hidden>
+        <section class="panel polish-panel polish-hero" aria-label="Польский тренажер">
+          <div>
+            <p class="section-kicker">Polski</p>
+            <h2>Тренажер предложений</h2>
+            <p>Добавь польские слова, создай задание на русском и напиши ответ по-польски. AI проверит формы, падежи и порядок слов.</p>
+          </div>
+          <span class="status-dot" id="polishAiStatus">DeepSeek</span>
+        </section>
+
+        <section class="panel polish-panel" aria-label="База польских слов">
+          <div class="panel-head">
+            <div>
+              <p class="section-kicker">База слов</p>
+              <h2>Мои польские слова</h2>
+            </div>
+            <span class="pill" id="polishWordCount">0 слов</span>
+          </div>
+          <label class="word-field">
+            <span>Добавь слова</span>
+            <textarea id="polishWordsInput" rows="5" autocomplete="off" placeholder="dom - дом&#10;praca - работа&#10;robić - делать"></textarea>
+          </label>
+          <div class="polish-actions">
+            <button class="main-button" id="addPolishWordsButton" type="button">Добавить мои слова</button>
+            <button class="soft-button" id="suggestPolishWordsButton" type="button">AI предложит 10 слов</button>
+          </div>
+          <p class="field-help">Можно писать просто польские слова или через дефис с переводом. Формы и грамматику AI уточнит в заданиях.</p>
+          <div class="polish-word-list" id="polishWordList"></div>
+        </section>
+
+        <section class="panel polish-panel polish-trainer" aria-label="Тренировка польского">
+          <div class="panel-head">
+            <div>
+              <p class="section-kicker">Тренировка</p>
+              <h2>RU → PL</h2>
+            </div>
+          </div>
+          <div class="polish-controls">
+            <label>
+              <span>Сколько слов использовать</span>
+              <select id="polishExerciseCount">
+                <option value="5">5 слов</option>
+                <option value="7" selected>7 слов</option>
+                <option value="10">10 слов</option>
+              </select>
+            </label>
+            <label>
+              <span>Режим</span>
+              <select id="polishExerciseMode">
+                <option value="easy">Лёгкий: почти только мои слова</option>
+                <option value="medium" selected>Средний: новые формы</option>
+                <option value="hard">Сложный: падежи и времена</option>
+              </select>
+            </label>
+          </div>
+          <button class="main-button" id="createPolishExerciseButton" type="button">Создать задание</button>
+
+          <article class="polish-exercise-card" id="polishExerciseCard" hidden>
+            <p class="section-kicker">Переведи на польский</p>
+            <h3 id="polishPromptRu"></h3>
+            <p class="field-help" id="polishExerciseHint"></p>
+            <div class="polish-used-words" id="polishUsedWords"></div>
+            <label class="word-field">
+              <span>Мой ответ по-польски</span>
+              <textarea id="polishAnswerInput" rows="4" autocomplete="off" placeholder="Напиши польское предложение здесь"></textarea>
+            </label>
+            <button class="success-button" id="checkPolishAnswerButton" type="button">Проверить ответ</button>
+          </article>
+
+          <article class="polish-feedback" id="polishFeedback" hidden></article>
+          <div class="status-box" id="polishStatus" role="status">Добавь слова или попроси AI предложить базовые.</div>
         </section>
       </main>
     </div>
@@ -345,6 +423,6 @@
       </article>
     </template>
 
-    <script src="app.js?v=46"></script>
+    <script src="app.js?v=47"></script>
   </body>
 </html>

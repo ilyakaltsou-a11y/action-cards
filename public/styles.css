@@ -66,6 +66,32 @@ button {
   gap: 8px;
 }
 
+.language-tabs {
+  display: inline-flex;
+  gap: 6px;
+  margin: -18px 0 22px;
+  padding: 5px;
+  border: 1px solid rgba(24, 18, 15, 0.1);
+  border-radius: 999px;
+  background: rgba(255, 253, 250, 0.72);
+  backdrop-filter: blur(14px);
+}
+
+.language-tab {
+  min-height: 40px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: rgba(24, 18, 15, 0.62);
+  font-weight: 650;
+  padding: 0 18px;
+}
+
+.language-tab.is-active {
+  background: #18120f;
+  color: #fffaf2;
+}
+
 .app-header > div:not(.header-actions) {
   flex: 1;
   min-width: 0;
@@ -108,6 +134,13 @@ h2 {
   align-items: start;
 }
 
+.polish-view {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: 18px;
+  align-items: start;
+}
+
 .panel {
   border: 1px solid rgba(228, 231, 236, 0.9);
   border-radius: 8px;
@@ -122,8 +155,142 @@ h2 {
 
 .creator,
 .song,
-.deck {
+.deck,
+.polish-panel {
   padding: 16px;
+}
+
+.polish-hero {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.polish-hero p:last-child {
+  max-width: 760px;
+  margin: 10px 0 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.polish-actions,
+.polish-controls {
+  display: grid;
+  gap: 10px;
+}
+
+.polish-actions {
+  grid-template-columns: 1fr 1fr;
+  margin-top: 12px;
+}
+
+.polish-controls {
+  grid-template-columns: 0.62fr 1fr;
+  margin-bottom: 12px;
+}
+
+.polish-controls label {
+  display: grid;
+  gap: 7px;
+  color: var(--ink);
+  font-weight: 650;
+}
+
+.polish-controls select {
+  min-height: 48px;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 253, 250, 0.86);
+  color: var(--ink);
+  font: inherit;
+  padding: 0 12px;
+}
+
+.polish-word-list,
+.polish-used-words {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.polish-word-chip,
+.polish-used-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  border: 1px solid rgba(24, 18, 15, 0.1);
+  border-radius: 999px;
+  background: rgba(246, 240, 230, 0.82);
+  color: var(--ink);
+  font-size: 0.9rem;
+  font-weight: 580;
+  padding: 0 12px;
+}
+
+.polish-word-chip button {
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(24, 18, 15, 0.08);
+  color: rgba(24, 18, 15, 0.72);
+  font-weight: 800;
+}
+
+.polish-exercise-card,
+.polish-feedback {
+  margin-top: 14px;
+  border: 1px solid rgba(24, 18, 15, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 253, 250, 0.72);
+  padding: 16px;
+}
+
+.polish-exercise-card h3 {
+  margin-bottom: 10px;
+  font-size: clamp(1.45rem, 4vw, 2.35rem);
+  font-weight: 430;
+  line-height: 1.1;
+}
+
+.polish-feedback {
+  display: grid;
+  gap: 12px;
+}
+
+.polish-feedback h3,
+.polish-feedback p {
+  margin-bottom: 0;
+}
+
+.polish-feedback-result {
+  display: grid;
+  gap: 8px;
+  border-radius: 8px;
+  background: rgba(246, 240, 230, 0.72);
+  padding: 12px;
+}
+
+.polish-feedback-result strong {
+  font-size: 1.05rem;
+}
+
+.polish-mistake-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.polish-mistake-list li {
+  border-left: 3px solid var(--red);
+  background: rgba(247, 222, 216, 0.5);
+  padding: 10px 12px;
 }
 
 .song {
@@ -1251,6 +1418,16 @@ button:disabled {
 
   .app-grid {
     grid-template-columns: 1fr;
+  }
+
+  .polish-view,
+  .polish-actions,
+  .polish-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .polish-hero {
+    display: grid;
   }
 
   .study-card {
