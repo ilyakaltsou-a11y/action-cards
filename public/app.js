@@ -5,12 +5,13 @@ const FOLDER_KEY = "action-cards:folder:v1";
 const ACTIVITY_KEY = "action-cards:activity:v1";
 const LANGUAGE_KEY = "action-cards:language:v1";
 const POLISH_KEY = "action-cards:polish:v1";
-const DEFAULT_CARDS_URL = "default-cards.json?v=51";
+const DEFAULT_CARDS_URL = "default-cards.json?v=52";
 const SONG_ROOT_FOLDER = "Только песни";
 const AGAIN_REVIEW_DELAY = 45 * 1000;
 const CREATE_CARD_TIMEOUT = 140 * 1000;
 const SONG_CARD_TIMEOUT = 480 * 1000;
 const POLISH_AI_TIMEOUT = 120 * 1000;
+const POLISH_PREFETCH_TARGET = 3;
 const MAX_SONG_LINES = 24;
 const SWIPE_THRESHOLD = 86;
 const DAILY_GOAL_OPTIONS = {
@@ -60,6 +61,7 @@ const state = {
   editingCardId: "",
   polish: { words: [], exercises: [], currentExercise: null, feedback: null },
   polishHintVisible: false,
+  polishPrefetching: false,
   drag: null,
   dragResetTimer: 0,
   ignoreFlipUntil: 0,
@@ -614,6 +616,7 @@ function normalizePolishExercise(exercise = {}) {
     expectedPl: normalizeFreeText(exercise.expectedPl, 620),
     hint: normalizeFreeText(exercise.hint, 420),
     mode: ["easy", "medium", "hard"].includes(exercise.mode) ? exercise.mode : "medium",
+    targetCount: [5, 10, 20].includes(Number(exercise.targetCount || exercise.count)) ? Number(exercise.targetCount || exercise.count) : 10,
     usedWords: Array.isArray(exercise.usedWords) ? exercise.usedWords.map(normalizePolishWord).filter(Boolean).slice(0, 16) : [],
     grammarFocus: Array.isArray(exercise.grammarFocus) ? exercise.grammarFocus.map((item) => normalizeFreeText(item, 100)).filter(Boolean).slice(0, 8) : [],
     createdAt: Number.isFinite(exercise.createdAt) ? exercise.createdAt : Date.now(),
@@ -635,11 +638,15 @@ function normalizePolishState(polish = {}) {
     ? polish.exercises.map(normalizePolishExercise).filter(Boolean).slice(0, 30)
     : [];
   const currentExercise = normalizePolishExercise(polish.currentExercise || {}) || null;
+  const preparedExercises = Array.isArray(polish.preparedExercises)
+    ? polish.preparedExercises.map(normalizePolishExercise).filter(Boolean).slice(0, POLISH_PREFETCH_TARGET)
+    : [];
 
   return {
     words: [...wordsByKey.values()].sort((left, right) => left.word.localeCompare(right.word, "pl")),
     exercises,
     currentExercise,
+    preparedExercises,
     feedback: polish.feedback && typeof polish.feedback === "object" ? polish.feedback : null,
   };
 }
@@ -658,6 +665,7 @@ function polishSyncSignature(polish = {}) {
     })),
     currentExercise: normalized.currentExercise,
     exercises: normalized.exercises,
+    preparedExercises: normalized.preparedExercises,
   });
 }
 
@@ -672,6 +680,9 @@ function mergePolishState(serverPolish = {}, localPolish = {}) {
     words: mergedWords,
     exercises: [...exercisesById.values()].sort((left, right) => right.createdAt - left.createdAt),
     currentExercise,
+    preparedExercises: normalizePolishState(localPolish).preparedExercises.length
+      ? normalizePolishState(localPolish).preparedExercises
+      : normalizePolishState(serverPolish).preparedExercises,
     feedback: normalizePolishState(localPolish).feedback || normalizePolishState(serverPolish).feedback,
   });
 }
@@ -1822,6 +1833,7 @@ function setLanguage(language) {
   if (state.language === "polish") closeGoalDialog();
   else syncGoalDialog();
   renderPolish();
+  if (state.language === "polish") window.setTimeout(() => ensurePolishExerciseQueue({ silent: true }), 300);
 }
 
 function initLanguage() {
@@ -1878,6 +1890,7 @@ function mergePolishWords(words = []) {
     byKey.set(key, { ...(byKey.get(key) || {}), ...normalized });
   });
   state.polish.words = [...byKey.values()].sort((left, right) => left.word.localeCompare(right.word, "pl"));
+  state.polish.preparedExercises = [];
   return words.map(normalizePolishWordEntry).filter(Boolean).length;
 }
 
@@ -1922,6 +1935,7 @@ async function addPolishWordsFromInput() {
 
 function removePolishWord(wordId) {
   state.polish.words = normalizePolishState(state.polish).words.filter((word) => word.id !== wordId);
+  state.polish.preparedExercises = [];
   saveCards();
   renderPolish();
   setPolishStatus("Слово удалено из польской базы.", "ok");
@@ -2156,6 +2170,88 @@ function choosePolishExerciseWords(count = 7) {
   return scored.slice(0, Math.max(3, Math.min(count, words.length))).map((item) => item.word);
 }
 
+function polishExerciseSettings() {
+  return {
+    count: Number(els.polishExerciseCount.value) || 10,
+    mode: els.polishExerciseMode.value || "medium",
+  };
+}
+
+function polishExerciseMatchesSettings(exercise, count, mode) {
+  const normalized = normalizePolishExercise(exercise);
+  return normalized && normalized.mode === mode && normalized.targetCount === count;
+}
+
+function takePreparedPolishExercise(count, mode) {
+  state.polish = normalizePolishState(state.polish);
+  const index = state.polish.preparedExercises.findIndex((exercise) => polishExerciseMatchesSettings(exercise, count, mode));
+  if (index === -1) return null;
+  const [exercise] = state.polish.preparedExercises.splice(index, 1);
+  return normalizePolishExercise(exercise);
+}
+
+function recentPolishExercisesForAi() {
+  return [...state.polish.exercises, ...state.polish.preparedExercises]
+    .slice(0, 10)
+    .map((exercise) => ({
+      promptRu: exercise.promptRu,
+      expectedPl: exercise.expectedPl,
+      usedWords: exercise.usedWords,
+    }));
+}
+
+async function fetchPolishExercise(count, mode) {
+  const data = await requestPolishApi("/api/polish/create-exercise", {
+    words: state.polish.words.slice(0, 200),
+    count,
+    mode,
+    recentExercises: recentPolishExercisesForAi(),
+  });
+  return normalizePolishExercise({ ...data.exercise, mode, targetCount: count });
+}
+
+function activatePolishExercise(exercise) {
+  const normalized = normalizePolishExercise(exercise);
+  if (!normalized) throw new Error("AI returned no exercise");
+  state.polish.currentExercise = normalized;
+  state.polishHintVisible = false;
+  state.polish.feedback = null;
+  state.polish.exercises = [normalized, ...state.polish.exercises.filter((item) => item.id !== normalized.id)].slice(0, 30);
+  els.polishAnswerInput.value = "";
+  saveCards();
+  renderPolish();
+}
+
+async function ensurePolishExerciseQueue({ silent = true } = {}) {
+  state.polish = normalizePolishState(state.polish);
+  if (state.polishPrefetching || state.polish.words.length < 3) return;
+
+  const { count, mode } = polishExerciseSettings();
+  const matchingQueue = state.polish.preparedExercises.filter((exercise) => polishExerciseMatchesSettings(exercise, count, mode));
+  state.polish.preparedExercises = matchingQueue.slice(0, POLISH_PREFETCH_TARGET);
+  if (matchingQueue.length >= POLISH_PREFETCH_TARGET) return;
+
+  state.polishPrefetching = true;
+  try {
+    await updateAiStatus();
+    if (!state.deepSeekOnline) return;
+    if (!silent) setPolishStatus("AI готовит задания заранее.", "work");
+    while (state.polish.preparedExercises.length < POLISH_PREFETCH_TARGET) {
+      const exercise = await fetchPolishExercise(count, mode);
+      const currentSettings = polishExerciseSettings();
+      if (currentSettings.count !== count || currentSettings.mode !== mode) break;
+      if (!exercise) break;
+      state.polish.preparedExercises = [...state.polish.preparedExercises, exercise].slice(0, POLISH_PREFETCH_TARGET);
+      saveCards();
+    }
+    if (!silent) setPolishStatus(`Готово заранее: ${state.polish.preparedExercises.length}.`, "ok");
+  } catch (error) {
+    if (!silent) setPolishStatus(`Не получилось подготовить задания заранее: ${friendlyError(error.message)}.`, "warn");
+  } finally {
+    state.polishPrefetching = false;
+  }
+}
+
 async function createPolishExercise() {
   state.polish = normalizePolishState(state.polish);
   if (state.polish.words.length < 3) {
@@ -2164,32 +2260,23 @@ async function createPolishExercise() {
   }
 
   els.createPolishExerciseButton.disabled = true;
-  state.polish.feedback = null;
-  setPolishStatus("AI создает русское предложение из твоих слов.", "work");
+  const { count, mode } = polishExerciseSettings();
   try {
+    const queuedExercise = takePreparedPolishExercise(count, mode);
+    if (queuedExercise) {
+      activatePolishExercise(queuedExercise);
+      setPolishStatus("Задание готово из очереди. Следующие готовятся в фоне.", "ok");
+      ensurePolishExerciseQueue();
+      return;
+    }
+
+    setPolishStatus("AI создает первое задание. Следующие подготовит заранее.", "work");
     await updateAiStatus();
     if (!state.deepSeekOnline) throw new Error("DEEPSEEK_API_KEY is not set");
-    const count = Number(els.polishExerciseCount.value) || 10;
-    const activeWords = state.polish.words.slice(0, 200);
-    const data = await requestPolishApi("/api/polish/create-exercise", {
-      words: activeWords,
-      count,
-      mode: els.polishExerciseMode.value || "medium",
-      recentExercises: state.polish.exercises.slice(0, 8).map((exercise) => ({
-        promptRu: exercise.promptRu,
-        expectedPl: exercise.expectedPl,
-        usedWords: exercise.usedWords,
-      })),
-    });
-    const exercise = normalizePolishExercise({ ...data.exercise, mode: els.polishExerciseMode.value });
-    if (!exercise) throw new Error("AI returned no exercise");
-    state.polish.currentExercise = exercise;
-    state.polishHintVisible = false;
-    state.polish.exercises = [exercise, ...state.polish.exercises.filter((item) => item.id !== exercise.id)].slice(0, 30);
-    els.polishAnswerInput.value = "";
-    saveCards();
-    renderPolish();
-    setPolishStatus("Задание готово. Напиши ответ по-польски.", "ok");
+    const exercise = await fetchPolishExercise(count, mode);
+    activatePolishExercise(exercise);
+    setPolishStatus("Задание готово. Следующие готовятся заранее.", "ok");
+    ensurePolishExerciseQueue();
   } catch (error) {
     setPolishStatus(`Не получилось создать задание: ${friendlyError(error.message)}.`, "error");
   } finally {
@@ -2231,6 +2318,7 @@ async function checkPolishAnswer() {
     saveCards();
     renderPolish();
     setPolishStatus(state.polish.feedback.isCorrect ? "Ответ засчитан." : "Разбор готов.", "ok");
+    ensurePolishExerciseQueue();
   } catch (error) {
     setPolishStatus(`Не получилось проверить ответ: ${friendlyError(error.message)}.`, "error");
   } finally {
@@ -2829,6 +2917,20 @@ els.polishDictionarySearch.addEventListener("input", renderPolishDictionary);
 els.polishDictionaryFilter.addEventListener("change", renderPolishDictionary);
 els.polishDictionaryDialog.addEventListener("click", (event) => {
   if (event.target === els.polishDictionaryDialog) closePolishDictionary();
+});
+els.polishExerciseCount.addEventListener("change", () => {
+  state.polish = normalizePolishState(state.polish);
+  state.polish.preparedExercises = [];
+  saveCards();
+  setPolishStatus("Настройки изменены. AI подготовит новую очередь.", "work");
+  ensurePolishExerciseQueue({ silent: true });
+});
+els.polishExerciseMode.addEventListener("change", () => {
+  state.polish = normalizePolishState(state.polish);
+  state.polish.preparedExercises = [];
+  saveCards();
+  setPolishStatus("Режим изменен. AI подготовит новую очередь.", "work");
+  ensurePolishExerciseQueue({ silent: true });
 });
 els.createPolishExerciseButton.addEventListener("click", createPolishExercise);
 els.checkPolishAnswerButton.addEventListener("click", checkPolishAnswer);
