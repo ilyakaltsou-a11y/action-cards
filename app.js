@@ -5,7 +5,7 @@ const FOLDER_KEY = "action-cards:folder:v1";
 const ACTIVITY_KEY = "action-cards:activity:v1";
 const LANGUAGE_KEY = "action-cards:language:v1";
 const POLISH_KEY = "action-cards:polish:v1";
-const DEFAULT_CARDS_URL = "default-cards.json?v=50";
+const DEFAULT_CARDS_URL = "default-cards.json?v=51";
 const SONG_ROOT_FOLDER = "Только песни";
 const AGAIN_REVIEW_DELAY = 45 * 1000;
 const CREATE_CARD_TIMEOUT = 140 * 1000;
@@ -201,7 +201,7 @@ function normalizePolishWord(value) {
     .toLowerCase()
     .replace(/[^a-ząćęłńóśźż -]/gi, "")
     .replace(/\s+/g, " ")
-    .slice(0, 60);
+    .slice(0, 90);
 }
 
 function polishWordKey(word) {
@@ -592,11 +592,12 @@ function activitiesHaveSameSyncState(leftActivity = {}, rightActivity = {}) {
 function normalizePolishWordEntry(entry = {}) {
   const word = normalizePolishWord(entry.word || entry.polish || "");
   if (!word) return null;
+  const partOfSpeech = normalizeFreeText(entry.partOfSpeech || entry.pos || "", 40) || (word.includes(" ") ? "phrase" : "");
   return {
     id: entry.id || crypto.randomUUID(),
     word,
     translation: normalizeFreeText(entry.translation || entry.ru || "", 80),
-    partOfSpeech: normalizeFreeText(entry.partOfSpeech || entry.pos || "", 40),
+    partOfSpeech,
     gender: normalizeFreeText(entry.gender || "", 30),
     level: normalizeFreeText(entry.level || "A1", 20),
     notes: normalizeFreeText(entry.notes || "", 160),
@@ -1829,14 +1830,20 @@ function initLanguage() {
 
 function parsePolishWordLines(text) {
   return String(text || "")
-    .split(/\n|,/)
+    .split(/\n|;/)
     .map((line) => line.trim())
     .filter(Boolean)
     .map((line) => {
-      const parts = line.split(/\s*[-–—:]\s*/);
+      const parts = line.split(/\s+[-–—:]\s+|\s*=\s*/);
       const word = normalizePolishWord(parts[0] || line);
       const translation = normalizeFreeText(parts.slice(1).join(" - "), 80);
-      return normalizePolishWordEntry({ word, translation, level: "A1" });
+      return normalizePolishWordEntry({
+        word,
+        translation,
+        partOfSpeech: word.includes(" ") ? "phrase" : "",
+        level: "A1",
+        notes: word.includes(" ") ? "устойчивое выражение" : "",
+      });
     })
     .filter(Boolean);
 }
@@ -1924,8 +1931,8 @@ function renderPolish() {
   if (!els.polishDictionarySummary) return;
   state.polish = normalizePolishState(state.polish);
   const wordCount = state.polish.words.length;
-  els.polishWordCount.textContent = `${wordCount} слов`;
-  els.polishDictionarySummary.textContent = `${wordCount} слов · Открыть`;
+  els.polishWordCount.textContent = `${wordCount} слов/фраз`;
+  els.polishDictionarySummary.textContent = `${wordCount} слов/фраз · Открыть`;
   els.polishDictionaryPreview.textContent = wordCount
     ? state.polish.words.slice(0, 6).map((word) => word.word).join(", ")
     : "Пока пусто";
@@ -1969,7 +1976,7 @@ function renderPolishDictionary() {
   if (!els.polishDictionaryList) return;
   const words = filteredPolishWords();
   const total = state.polish.words.length;
-  els.polishDictionaryCount.textContent = `${words.length} из ${total} слов`;
+  els.polishDictionaryCount.textContent = `${words.length} из ${total} слов/фраз`;
   els.polishDictionaryList.replaceChildren();
 
   if (!words.length) {

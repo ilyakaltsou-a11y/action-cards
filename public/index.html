@@ -7,11 +7,11 @@
     <title>Карточки действий</title>
     <script>
       if (window.location.protocol === "file:") {
-        window.location.replace(`http://127.0.0.1:5176/${window.location.search || "?v=50"}`);
+        window.location.replace(`http://127.0.0.1:5176/${window.location.search || "?v=51"}`);
       }
     </script>
     <link rel="manifest" href="manifest.webmanifest" />
-    <link rel="stylesheet" href="styles.css?v=50" />
+    <link rel="stylesheet" href="styles.css?v=51" />
   </head>
   <body>
     <div class="app-shell">
@@ -197,17 +197,17 @@
               <p class="section-kicker">База слов</p>
               <h2>Мои польские слова</h2>
             </div>
-            <span class="pill" id="polishWordCount">0 слов</span>
+            <span class="pill" id="polishWordCount">0 слов/фраз</span>
           </div>
           <label class="word-field">
-            <span>Добавь слова или польский текст</span>
-            <textarea id="polishWordsInput" rows="5" autocomplete="off" placeholder="dom - дом&#10;praca - работа&#10;Robię pracę domową z dzieckiem."></textarea>
+              <span>Добавь слова, фразы или польский текст</span>
+              <textarea id="polishWordsInput" rows="5" autocomplete="off" placeholder="dom - дом&#10;w sumie — в общем-то&#10;szczerze mówiąc — честно говоря&#10;ogólnie rzecz biorąc — в целом&#10;Robię pracę domową z dzieckiem."></textarea>
           </label>
           <div class="polish-actions">
             <button class="main-button" id="addPolishWordsButton" type="button">Добавить мои слова</button>
             <button class="soft-button" id="suggestPolishWordsButton" type="button">AI предложит 10 слов</button>
           </div>
-          <p class="field-help">Можно вставить список слов или несколько польских предложений. AI разберёт текст на отдельные слова и полезные связки.</p>
+          <p class="field-help">Можно вставить список слов, устойчивые выражения или польский текст. AI сохранит выражения целиком, если они работают как одна фраза.</p>
           <button class="polish-dictionary-button" id="openPolishDictionaryButton" type="button">
             <span>Словарь</span>
             <strong id="polishDictionarySummary">0 слов · Открыть</strong>
@@ -306,7 +306,7 @@
           <label>
             <span>Тип</span>
             <select id="polishDictionaryFilter">
-              <option value="all">Все слова</option>
+              <option value="all">Все слова и фразы</option>
               <option value="verb">Глаголы</option>
               <option value="noun">Существительные</option>
               <option value="phrase">Фразы</option>
@@ -315,7 +315,7 @@
             </select>
           </label>
         </div>
-        <p class="field-help" id="polishDictionaryCount">0 слов</p>
+        <p class="field-help" id="polishDictionaryCount">0 слов/фраз</p>
         <div class="polish-dictionary-list" id="polishDictionaryList"></div>
       </section>
     </dialog>
@@ -458,6 +458,6 @@
       </article>
     </template>
 
-    <script src="app.js?v=50"></script>
+    <script src="app.js?v=51"></script>
   </body>
 </html>

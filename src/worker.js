@@ -106,7 +106,7 @@ function cleanPolishWord(value) {
     .toLowerCase()
     .replace(/[^a-ząćęłńóśźż -]/gi, "")
     .replace(/\s+/g, " ")
-    .slice(0, 60);
+    .slice(0, 90);
 }
 
 function cleanProfile(profile) {
@@ -215,7 +215,7 @@ function normalizePolishWords(words = []) {
       return {
         word,
         translation: cleanTitle(entry.translation || entry.ru || ""),
-        partOfSpeech: cleanTitle(entry.partOfSpeech || entry.pos || ""),
+        partOfSpeech: cleanTitle(entry.partOfSpeech || entry.pos || (word.includes(" ") ? "phrase" : "")),
         gender: cleanTitle(entry.gender || ""),
         level: cleanTitle(entry.level || "A1"),
         notes: String(entry.notes || "").trim().replace(/\s+/g, " ").slice(0, 180),
@@ -288,7 +288,10 @@ async function extractPolishWords(env, text = "", existingWords = []) {
         "If the text contains Polish words, do not return an empty list.",
         "Extract dictionary/base forms, not only surface forms.",
         "For example, from 'Robię pracę domową z dzieckiem' extract robić, praca domowa, dziecko.",
-        "Include short useful two-word chunks when they behave like a phrase or are learned together.",
+        "Detect fixed expressions, discourse markers, collocations, and useful multi-word chunks.",
+        "Return them as one item, not split into separate words, when they behave like one learned phrase.",
+        "Examples of one phrase item: w sumie — в общем-то; szczerze mówiąc — честно говоря; ogólnie rzecz biorąc — в целом.",
+        "For phrase items set partOfSpeech to phrase.",
         "Skip punctuation, names, duplicates, and words already listed.",
         "For each item return: word, Russian translation, partOfSpeech, gender if relevant, level, short Russian notes, and useful forms object when useful.",
       ].join(" "),
@@ -341,6 +344,8 @@ async function createPolishExercise(env, words = [], count = 10, mode = "medium"
         `Grammar target: ${modeSettings.grammar}.`,
         "Vocabulary rule: the answer must use the learner's provided active vocabulary as the main source of content words. Inflected forms of those words are allowed and preferred.",
         "Treat the provided active vocabulary as the complete allowed content-word list for this exercise.",
+        "If active vocabulary contains a multi-word phrase, it is an allowed atomic phrase. Use it intact, and do not require the individual words to exist separately.",
+        "Examples of atomic phrases: w sumie, szczerze mówiąc, ogólnie rzecz biorąc.",
         "Default to zero new content words outside the active vocabulary.",
         "Do not add outside adjectives, nouns, or verbs just to make the sentence richer.",
         "Do not add any new content words outside the active vocabulary in any mode. The hint must not contain Новое слово.",
@@ -358,7 +363,7 @@ async function createPolishExercise(env, words = [], count = 10, mode = "medium"
         "Do not overload with rare new vocabulary.",
         "Avoid repeating the recent prompts, themes, and sentence patterns. Create a visibly different situation each time.",
         "Use at least 3 words from the provided vocabulary when possible, but never list words that are not actually used.",
-        "The usedWords array must contain only base forms from the provided active vocabulary that appear in the Polish answer.",
+        "The usedWords array must contain only base forms or whole phrases from the provided active vocabulary that appear in the Polish answer.",
         "Before returning, audit the Polish answer. If it contains more than one content word whose base form is not in active vocabulary, rewrite the exercise.",
         "Return exercise with promptRu, expectedPl, usedWords, grammarFocus, and hint in Russian.",
       ].join(" "),
@@ -384,7 +389,7 @@ async function createPolishExercise(env, words = [], count = 10, mode = "medium"
         "You audit and repair a Russian-to-Polish translation exercise.",
         "Return only JSON with exercise.",
         "Use the provided active vocabulary as the complete allowed content-word list.",
-        "Inflected forms of active vocabulary are allowed. Semantic synonyms are not allowed unless their base form is in active vocabulary.",
+        "Inflected forms of active vocabulary are allowed. Multi-word active vocabulary phrases are allowed as atomic phrases. Semantic synonyms are not allowed unless their base form or whole phrase is in active vocabulary.",
         "All modes must have zero new content words outside active vocabulary. The hint must not contain Новое слово.",
         `Keep the answer close to ${selectedCount} total words; ${targetRange} words is acceptable.`,
         "Function words, pronouns, particles, and prepositions are allowed.",
@@ -394,7 +399,7 @@ async function createPolishExercise(env, words = [], count = 10, mode = "medium"
         "Bad if widzieć, zmęczony, pracować, and rozmawiać are absent: Widzę przyjaciela. On wygląda na zmęczonego, bo dużo pracuje. Rozmawiamy o rodzinie.",
         "Good with active words iść, sklep, czytać, książka: Kiedy idę do sklepu, czytam książkę.",
         "Good hard example with active words być, dziecko, lubić, czytać, książka, rano, mieć, praca, dom, mówić, rodzina: Kiedy byłem dzieckiem, lubiłem czytać książki rano. Mam pracę i dom, ale lubię mówić z rodziną.",
-        "The usedWords array must contain only active vocabulary base forms that appear in the Polish answer.",
+        "The usedWords array must contain only active vocabulary base forms or whole phrases that appear in the Polish answer.",
       ].join(" "),
     },
     {
@@ -425,6 +430,7 @@ async function checkPolishAnswer(env, exercise = {}, answer = "", words = []) {
         "You check a Russian-to-Polish sentence exercise.",
         "Return only JSON.",
         "Be strict about Polish cases, verb conjugation, adjective agreement, prepositions, and word order, but accept natural alternative Polish phrasing.",
+        "If the active vocabulary contains a fixed multi-word phrase, treat it as one learned item and do not split it into separate vocabulary requirements.",
         "Explain mistakes in Russian in a short practical way.",
         "Return isCorrect, score 0-100, correctedAnswer, mistakes array, and explanationRu.",
         "Each mistake should include user, correct, reasonRu, and grammarPoint.",
