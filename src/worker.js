@@ -3,7 +3,7 @@ const DEEPSEEK_MODEL = "deepseek-chat";
 const IMAGE_MODEL = "gpt-image-1-mini";
 const IMAGE_QUALITY = "medium";
 const TEXT_TIMEOUT = 45 * 1000;
-const DEEPSEEK_TIMEOUT = 45 * 1000;
+const DEEPSEEK_TIMEOUT = 75 * 1000;
 const IMAGE_TIMEOUT = 120 * 1000;
 const MAX_SONG_LINES = 24;
 const IMAGE_CONCURRENCY = 6;
@@ -176,7 +176,7 @@ async function deepseekJson(env, messages) {
 }
 
 async function findSongOptions(env, query) {
-  const result = await deepseekJson(env, [
+  const messages = [
     {
       role: "system",
       content: [
@@ -188,7 +188,9 @@ async function findSongOptions(env, query) {
       ].join(" "),
     },
     { role: "user", content: JSON.stringify({ query }) },
-  ]);
+  ];
+
+  const result = await deepseekJson(env, messages);
 
   return Array.isArray(result.candidates)
     ? result.candidates
@@ -227,7 +229,7 @@ function normalizePolishWords(words = []) {
 async function suggestPolishWords(env, existingWords = [], count = 10) {
   const cleanExistingWords = existingWords.map(cleanPolishWord).filter(Boolean).slice(0, 200);
   const requestedCount = Math.max(1, Math.min(20, Number(count) || 10));
-  const result = await deepseekJson(env, [
+  const messages = [
     {
       role: "system",
       content: [
@@ -247,7 +249,9 @@ async function suggestPolishWords(env, existingWords = [], count = 10) {
         count: requestedCount,
       }),
     },
-  ]);
+  ];
+
+  const result = await deepseekJson(env, messages);
 
   const words = normalizePolishWords(result.words || result.vocabulary || result.items || result.suggestions || result.entries);
   if (words.length) return words.slice(0, requestedCount);
@@ -301,31 +305,30 @@ async function extractPolishWords(env, text = "", existingWords = []) {
   return normalizePolishWords(result.words || result.vocabulary || result.items || result.entries).slice(0, 30);
 }
 
-async function createPolishExercise(env, words = [], count = 7, mode = "medium", recentExercises = []) {
+async function createPolishExercise(env, words = [], count = 10, mode = "medium", recentExercises = []) {
   const vocabulary = normalizePolishWords(words).slice(0, 120);
-  const selectedCount = Math.max(3, Math.min(10, Number(count) || 7));
+  const activeVocabulary = new Set(vocabulary.map((word) => cleanPolishWord(word.word)));
+  const selectedCount = Math.max(5, Math.min(20, Number(count) || 10));
+  const targetRange = selectedCount <= 5 ? "4-6" : selectedCount <= 10 ? "8-12" : "16-22";
   const cleanMode = ["easy", "medium", "hard"].includes(mode) ? mode : "medium";
   const modeSettings = {
     easy: {
       cefr: "A1-A2",
       sentenceCount: "exactly 1 short sentence",
       grammar: "present tense, simple word order, very common cases only",
-      newWords: "use almost no new content words beyond the provided vocabulary",
     },
     medium: {
       cefr: "A2",
       sentenceCount: "exactly 1 natural sentence",
       grammar: "present or simple past/future, one clear case or preposition challenge",
-      newWords: "use mostly the provided vocabulary with only necessary function words",
     },
     hard: {
       cefr: "B1",
-      sentenceCount: "2 or 3 connected sentences",
+      sentenceCount: selectedCount >= 15 ? "2 or 3 connected sentences" : "1 dense natural sentence",
       grammar: "mix cases, pronouns, aspect, time markers, and more natural Polish word order",
-      newWords: "you may add a few obvious context words, but keep the active vocabulary central",
     },
   }[cleanMode];
-  const result = await deepseekJson(env, [
+  const messages = [
     {
       role: "system",
       content: [
@@ -334,14 +337,29 @@ async function createPolishExercise(env, words = [], count = 7, mode = "medium",
         "The learner is Russian-speaking and studies Polish grammar through sentence generation.",
         `Difficulty: ${cleanMode}. Target level: ${modeSettings.cefr}.`,
         `Length requirement: ${modeSettings.sentenceCount}.`,
+        `The selected number means approximate total words in the Russian prompt and Polish answer, not the number of vocabulary entries. Target about ${selectedCount} words; ${targetRange} words is acceptable.`,
         `Grammar target: ${modeSettings.grammar}.`,
-        `Vocabulary rule: ${modeSettings.newWords}.`,
+        "Vocabulary rule: the answer must use the learner's provided active vocabulary as the main source of content words. Inflected forms of those words are allowed and preferred.",
+        "Treat the provided active vocabulary as the complete allowed content-word list for this exercise.",
+        "Default to zero new content words outside the active vocabulary.",
+        "Do not add outside adjectives, nouns, or verbs just to make the sentence richer.",
+        "Do not add any new content words outside the active vocabulary in any mode. The hint must not contain Новое слово.",
+        "Never add several new nouns or verbs such as mother, coffee, neighbor, teacher, tired, or buy when they are not in active vocabulary.",
+        "Forbidden unless explicitly present in active vocabulary: widzieć, zmęczony, pracować, rozmawiać, kupić, kupować, chleb, mleko, kawa, nauczyciel, sąsiad.",
+        "Bad if kupować, chleb, and mleko are absent: Kiedy idę do sklepu, kupuję chleb i mleko.",
+        "Bad if widzieć, zmęczony, pracować, and rozmawiać are absent: Widzę przyjaciela. On wygląda na zmęczonego, bo dużo pracuje. Rozmawiamy o rodzinie.",
+        "Good with active words iść, sklep, czytać, książka: Kiedy idę do sklepu, czytam książkę.",
+        "Good hard example with active words być, dziecko, lubić, czytać, książka, rano, mieć, praca, dom, mówić, rodzina: Kiedy byłem dzieckiem, lubiłem czytać książki rano. Mam pracę i dom, ale lubię mówić z rodziną.",
+        "Prefer active vocabulary substitutes: use rodzina instead of mama, mówić instead of rozmawiać, pić without adding a new drink, and provided verbs instead of unrelated verbs.",
+        "Common function words, pronouns, particles, and prepositions are allowed.",
         "The Russian prompt must be natural and clear.",
         "Do not make every exercise a question. Vary task types: statements, requests, plans, small stories, comparisons, and occasional questions.",
-        "Use the selected number of vocabulary items as much as naturally possible.",
-        "Do not overload with rare new vocabulary. Add only obvious service words when necessary.",
+        "Keep the sentence length close to the selected number even in hard mode.",
+        "Do not overload with rare new vocabulary.",
         "Avoid repeating the recent prompts, themes, and sentence patterns. Create a visibly different situation each time.",
-        "Use at least 3 words from the provided vocabulary when possible.",
+        "Use at least 3 words from the provided vocabulary when possible, but never list words that are not actually used.",
+        "The usedWords array must contain only base forms from the provided active vocabulary that appear in the Polish answer.",
+        "Before returning, audit the Polish answer. If it contains more than one content word whose base form is not in active vocabulary, rewrite the exercise.",
         "Return exercise with promptRu, expectedPl, usedWords, grammarFocus, and hint in Russian.",
       ].join(" "),
     },
@@ -355,13 +373,45 @@ async function createPolishExercise(env, words = [], count = 7, mode = "medium",
         randomSeed: crypto.randomUUID(),
       }),
     },
-  ]);
+  ];
 
-  const exercise = result.exercise || result;
+  const result = await deepseekJson(env, messages);
+  const initialExercise = result.exercise || result;
+  const repairedResult = await deepseekJson(env, [
+    {
+      role: "system",
+      content: [
+        "You audit and repair a Russian-to-Polish translation exercise.",
+        "Return only JSON with exercise.",
+        "Use the provided active vocabulary as the complete allowed content-word list.",
+        "Inflected forms of active vocabulary are allowed. Semantic synonyms are not allowed unless their base form is in active vocabulary.",
+        "All modes must have zero new content words outside active vocabulary. The hint must not contain Новое слово.",
+        `Keep the answer close to ${selectedCount} total words; ${targetRange} words is acceptable.`,
+        "Function words, pronouns, particles, and prepositions are allowed.",
+        "If the exercise uses too many outside words, rewrite it using only the active vocabulary.",
+        "Forbidden unless explicitly present in active vocabulary: widzieć, zmęczony, pracować, rozmawiać, kupić, kupować, chleb, mleko, kawa, nauczyciel, sąsiad.",
+        "Bad if kupować, chleb, and mleko are absent: Kiedy idę do sklepu, kupuję chleb i mleko.",
+        "Bad if widzieć, zmęczony, pracować, and rozmawiać are absent: Widzę przyjaciela. On wygląda na zmęczonego, bo dużo pracuje. Rozmawiamy o rodzinie.",
+        "Good with active words iść, sklep, czytać, książka: Kiedy idę do sklepu, czytam książkę.",
+        "Good hard example with active words być, dziecko, lubić, czytać, książka, rano, mieć, praca, dom, mówić, rodzina: Kiedy byłem dzieckiem, lubiłem czytać książki rano. Mam pracę i dom, ale lubię mówić z rodziną.",
+        "The usedWords array must contain only active vocabulary base forms that appear in the Polish answer.",
+      ].join(" "),
+    },
+    {
+      role: "user",
+      content: JSON.stringify({
+        activeVocabulary: vocabulary,
+        mode: cleanMode,
+        count: selectedCount,
+        exercise: initialExercise,
+      }),
+    },
+  ]).catch(() => ({ exercise: initialExercise }));
+  const exercise = repairedResult.exercise || repairedResult || initialExercise;
   return {
     promptRu: String(exercise.promptRu || "").trim().replace(/\s+/g, " ").slice(0, 620),
     expectedPl: String(exercise.expectedPl || "").trim().replace(/\s+/g, " ").slice(0, 620),
-    usedWords: Array.isArray(exercise.usedWords) ? exercise.usedWords.map(cleanPolishWord).filter(Boolean).slice(0, 16) : [],
+    usedWords: Array.isArray(exercise.usedWords) ? exercise.usedWords.map(cleanPolishWord).filter((word) => word && activeVocabulary.has(word)).slice(0, 24) : [],
     grammarFocus: Array.isArray(exercise.grammarFocus) ? exercise.grammarFocus.map((item) => cleanTitle(item).slice(0, 100)).filter(Boolean).slice(0, 8) : [],
     hint: String(exercise.hint || "").trim().replace(/\s+/g, " ").slice(0, 420),
   };

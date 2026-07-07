@@ -5,12 +5,12 @@ const FOLDER_KEY = "action-cards:folder:v1";
 const ACTIVITY_KEY = "action-cards:activity:v1";
 const LANGUAGE_KEY = "action-cards:language:v1";
 const POLISH_KEY = "action-cards:polish:v1";
-const DEFAULT_CARDS_URL = "default-cards.json?v=49";
+const DEFAULT_CARDS_URL = "default-cards.json?v=50";
 const SONG_ROOT_FOLDER = "Только песни";
 const AGAIN_REVIEW_DELAY = 45 * 1000;
 const CREATE_CARD_TIMEOUT = 140 * 1000;
 const SONG_CARD_TIMEOUT = 480 * 1000;
-const POLISH_AI_TIMEOUT = 90 * 1000;
+const POLISH_AI_TIMEOUT = 120 * 1000;
 const MAX_SONG_LINES = 24;
 const SWIPE_THRESHOLD = 86;
 const DAILY_GOAL_OPTIONS = {
@@ -1633,6 +1633,7 @@ function friendlyError(message = "") {
   if (message.includes("DEEPSEEK_API_KEY")) return "ключ DeepSeek не найден";
   if (message.includes("DeepSeek timeout")) return "DeepSeek слишком долго отвечает";
   if (message.includes("DeepSeek failed")) return "ошибка DeepSeek";
+  if (message.includes("fetch failed") || message.includes("Failed to fetch") || message.includes("NetworkError")) return "AI временно не ответил, попробуй еще раз";
   if (message.includes("401")) return "ключ отклонен OpenAI";
   if (message.includes("429")) return "лимит или баланс OpenAI";
   if (message.includes("timeout") || message.includes("aborted") || message.includes("AbortError")) return "AI слишком долго отвечает, попробуй еще раз";
@@ -2082,21 +2083,32 @@ function escapeHtml(value = "") {
 }
 
 async function requestPolishApi(path, payload) {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), POLISH_AI_TIMEOUT);
-  const response = await fetch(path, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-    signal: controller.signal,
-  }).finally(() => clearTimeout(timeoutId));
+  let lastError = null;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), POLISH_AI_TIMEOUT);
+    try {
+      const response = await fetch(path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
 
-  if (!response.ok) {
-    const data = await response.json().catch(() => ({}));
-    throw new Error(data.error || "DeepSeek unavailable");
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || "DeepSeek unavailable");
+      }
+
+      return response.json();
+    } catch (error) {
+      lastError = error;
+      if (error.name === "AbortError" || attempt === 1) throw error;
+    } finally {
+      clearTimeout(timeoutId);
+    }
   }
-
-  return response.json();
+  throw lastError || new Error("fetch failed");
 }
 
 async function suggestPolishWords() {
@@ -2150,10 +2162,10 @@ async function createPolishExercise() {
   try {
     await updateAiStatus();
     if (!state.deepSeekOnline) throw new Error("DEEPSEEK_API_KEY is not set");
-    const count = Number(els.polishExerciseCount.value) || 7;
-    const selectedWords = choosePolishExerciseWords(count);
+    const count = Number(els.polishExerciseCount.value) || 10;
+    const activeWords = state.polish.words.slice(0, 200);
     const data = await requestPolishApi("/api/polish/create-exercise", {
-      words: selectedWords,
+      words: activeWords,
       count,
       mode: els.polishExerciseMode.value || "medium",
       recentExercises: state.polish.exercises.slice(0, 8).map((exercise) => ({
