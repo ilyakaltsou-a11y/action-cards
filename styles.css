@@ -340,6 +340,28 @@ h2 {
   line-height: 1.1;
 }
 
+#polishExerciseHint {
+  cursor: pointer;
+  border-radius: 8px;
+  transition: filter 160ms ease, opacity 160ms ease, background 160ms ease, color 160ms ease;
+}
+
+#polishExerciseHint.is-hidden {
+  display: inline-block;
+  width: fit-content;
+  max-width: 100%;
+  padding: 8px 12px;
+  background: rgba(246, 240, 230, 0.78);
+  color: rgba(24, 18, 15, 0.5);
+  filter: blur(5px);
+  user-select: none;
+}
+
+#polishExerciseHint.is-hidden:focus {
+  outline: 2px solid rgba(24, 18, 15, 0.25);
+  outline-offset: 3px;
+}
+
 .polish-feedback {
   display: grid;
   gap: 12px;

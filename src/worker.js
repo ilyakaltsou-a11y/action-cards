@@ -305,6 +305,26 @@ async function createPolishExercise(env, words = [], count = 7, mode = "medium",
   const vocabulary = normalizePolishWords(words).slice(0, 120);
   const selectedCount = Math.max(3, Math.min(10, Number(count) || 7));
   const cleanMode = ["easy", "medium", "hard"].includes(mode) ? mode : "medium";
+  const modeSettings = {
+    easy: {
+      cefr: "A1-A2",
+      sentenceCount: "exactly 1 short sentence",
+      grammar: "present tense, simple word order, very common cases only",
+      newWords: "use almost no new content words beyond the provided vocabulary",
+    },
+    medium: {
+      cefr: "A2",
+      sentenceCount: "exactly 1 natural sentence",
+      grammar: "present or simple past/future, one clear case or preposition challenge",
+      newWords: "use mostly the provided vocabulary with only necessary function words",
+    },
+    hard: {
+      cefr: "B1",
+      sentenceCount: "2 or 3 connected sentences",
+      grammar: "mix cases, pronouns, aspect, time markers, and more natural Polish word order",
+      newWords: "you may add a few obvious context words, but keep the active vocabulary central",
+    },
+  }[cleanMode];
   const result = await deepseekJson(env, [
     {
       role: "system",
@@ -312,12 +332,13 @@ async function createPolishExercise(env, words = [], count = 7, mode = "medium",
         "You create one Russian-to-Polish translation exercise.",
         "Return only JSON.",
         "The learner is Russian-speaking and studies Polish grammar through sentence generation.",
-        "Use mostly the learner's active vocabulary.",
-        "Easy mode: about 90% learner vocabulary plus necessary function words.",
-        "Medium mode: use learner vocabulary and train one or two new grammatical forms.",
-        "Hard mode: use learner vocabulary with cases, tense, pronouns, or word order challenges.",
+        `Difficulty: ${cleanMode}. Target level: ${modeSettings.cefr}.`,
+        `Length requirement: ${modeSettings.sentenceCount}.`,
+        `Grammar target: ${modeSettings.grammar}.`,
+        `Vocabulary rule: ${modeSettings.newWords}.`,
         "The Russian prompt must be natural and clear.",
-        "The expected Polish answer must be one natural sentence.",
+        "Do not make every exercise a question. Vary task types: statements, requests, plans, small stories, comparisons, and occasional questions.",
+        "Use the selected number of vocabulary items as much as naturally possible.",
         "Do not overload with rare new vocabulary. Add only obvious service words when necessary.",
         "Avoid repeating the recent prompts, themes, and sentence patterns. Create a visibly different situation each time.",
         "Use at least 3 words from the provided vocabulary when possible.",
@@ -338,11 +359,11 @@ async function createPolishExercise(env, words = [], count = 7, mode = "medium",
 
   const exercise = result.exercise || result;
   return {
-    promptRu: cleanTitle(exercise.promptRu).slice(0, 260),
-    expectedPl: String(exercise.expectedPl || "").trim().replace(/\s+/g, " ").slice(0, 260),
+    promptRu: String(exercise.promptRu || "").trim().replace(/\s+/g, " ").slice(0, 620),
+    expectedPl: String(exercise.expectedPl || "").trim().replace(/\s+/g, " ").slice(0, 620),
     usedWords: Array.isArray(exercise.usedWords) ? exercise.usedWords.map(cleanPolishWord).filter(Boolean).slice(0, 16) : [],
     grammarFocus: Array.isArray(exercise.grammarFocus) ? exercise.grammarFocus.map((item) => cleanTitle(item).slice(0, 100)).filter(Boolean).slice(0, 8) : [],
-    hint: String(exercise.hint || "").trim().replace(/\s+/g, " ").slice(0, 220),
+    hint: String(exercise.hint || "").trim().replace(/\s+/g, " ").slice(0, 420),
   };
 }
 

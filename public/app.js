@@ -5,7 +5,7 @@ const FOLDER_KEY = "action-cards:folder:v1";
 const ACTIVITY_KEY = "action-cards:activity:v1";
 const LANGUAGE_KEY = "action-cards:language:v1";
 const POLISH_KEY = "action-cards:polish:v1";
-const DEFAULT_CARDS_URL = "default-cards.json?v=48";
+const DEFAULT_CARDS_URL = "default-cards.json?v=49";
 const SONG_ROOT_FOLDER = "Только песни";
 const AGAIN_REVIEW_DELAY = 45 * 1000;
 const CREATE_CARD_TIMEOUT = 140 * 1000;
@@ -59,6 +59,7 @@ const state = {
   selectedCardIds: new Set(),
   editingCardId: "",
   polish: { words: [], exercises: [], currentExercise: null, feedback: null },
+  polishHintVisible: false,
   drag: null,
   dragResetTimer: 0,
   ignoreFlipUntil: 0,
@@ -608,9 +609,9 @@ function normalizePolishExercise(exercise = {}) {
   if (!exercise.promptRu) return null;
   return {
     id: exercise.id || crypto.randomUUID(),
-    promptRu: normalizeFreeText(exercise.promptRu, 260),
-    expectedPl: normalizeFreeText(exercise.expectedPl, 260),
-    hint: normalizeFreeText(exercise.hint, 220),
+    promptRu: normalizeFreeText(exercise.promptRu, 620),
+    expectedPl: normalizeFreeText(exercise.expectedPl, 620),
+    hint: normalizeFreeText(exercise.hint, 420),
     mode: ["easy", "medium", "hard"].includes(exercise.mode) ? exercise.mode : "medium",
     usedWords: Array.isArray(exercise.usedWords) ? exercise.usedWords.map(normalizePolishWord).filter(Boolean).slice(0, 16) : [],
     grammarFocus: Array.isArray(exercise.grammarFocus) ? exercise.grammarFocus.map((item) => normalizeFreeText(item, 100)).filter(Boolean).slice(0, 8) : [],
@@ -2016,6 +2017,10 @@ function renderPolishExercise() {
 
   els.polishPromptRu.textContent = exercise.promptRu;
   els.polishExerciseHint.textContent = exercise.hint || "Используй свои слова из базы. Служебные слова можно добавлять по смыслу.";
+  els.polishExerciseHint.classList.toggle("is-hidden", !state.polishHintVisible);
+  els.polishExerciseHint.setAttribute("role", "button");
+  els.polishExerciseHint.setAttribute("tabindex", "0");
+  els.polishExerciseHint.setAttribute("aria-label", state.polishHintVisible ? "Скрыть подсказку" : "Показать подсказку");
   els.polishUsedWords.replaceChildren();
   exercise.usedWords.forEach((word) => {
     const chip = document.createElement("span");
@@ -2023,6 +2028,12 @@ function renderPolishExercise() {
     chip.textContent = word;
     els.polishUsedWords.append(chip);
   });
+}
+
+function togglePolishHint() {
+  if (!normalizePolishExercise(state.polish.currentExercise || {})) return;
+  state.polishHintVisible = !state.polishHintVisible;
+  renderPolishExercise();
 }
 
 function renderPolishFeedback() {
@@ -2154,6 +2165,7 @@ async function createPolishExercise() {
     const exercise = normalizePolishExercise({ ...data.exercise, mode: els.polishExerciseMode.value });
     if (!exercise) throw new Error("AI returned no exercise");
     state.polish.currentExercise = exercise;
+    state.polishHintVisible = false;
     state.polish.exercises = [exercise, ...state.polish.exercises.filter((item) => item.id !== exercise.id)].slice(0, 30);
     els.polishAnswerInput.value = "";
     saveCards();
@@ -2801,6 +2813,12 @@ els.polishDictionaryDialog.addEventListener("click", (event) => {
 });
 els.createPolishExerciseButton.addEventListener("click", createPolishExercise);
 els.checkPolishAnswerButton.addEventListener("click", checkPolishAnswer);
+els.polishExerciseHint.addEventListener("click", togglePolishHint);
+els.polishExerciseHint.addEventListener("keydown", (event) => {
+  if (!["Enter", " "].includes(event.key)) return;
+  event.preventDefault();
+  togglePolishHint();
+});
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js"));
