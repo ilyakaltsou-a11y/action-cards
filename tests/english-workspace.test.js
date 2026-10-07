@@ -94,12 +94,20 @@ async function launch({ offline = false, saved, storedFolder = "all", exerciseRe
     crypto: require("node:crypto").webcrypto, navigator: { language: "ru" },
     setTimeout: () => 0, clearTimeout: () => {}, setInterval: () => 0, confirm: () => true, console,
   };
+  let clockOffset = 0;
+  sandbox.Date = class extends Date {
+    static now() { return Date.now() + clockOffset; }
+  };
   vm.createContext(sandbox);
-  vm.runInContext(fs.readFileSync(path.join(root, "public/app.js"), "utf8") + "\nglobalThis.testApi = { state, renderStudy, loadServerCards, saveCards, startEditCard, currentCard, englishTrainerWords, mergeEnglishTrainerWords, renderEnglishTrainer, removeEnglishTrainerWord, boostEnglishTrainerWord, englishTrainerVocabularyForExercise, fetchEnglishTrainerExercise, englishExerciseTextsMatch };", sandbox);
+  for (const script of document.querySelectorAll("script[src]")) {
+    const file = script.getAttribute("src").split("?")[0];
+    const testApi = file === "app.js" ? "\nglobalThis.testApi = { state, swipes, activityTracker, renderStudy, loadServerCards, saveCards, startEditCard, currentCard, englishTrainerWords, mergeEnglishTrainerWords, renderEnglishTrainer, removeEnglishTrainerWord, boostEnglishTrainerWord, englishTrainerVocabularyForExercise, fetchEnglishTrainerExercise, englishExerciseTextsMatch };" : "";
+    vm.runInContext(fs.readFileSync(path.join(root, "public", file), "utf8") + testApi, sandbox, { filename: file });
+  }
   const flush = async () => { for (let index = 0; index < 10; index += 1) await new Promise(setImmediate); };
   await flush();
   document.querySelector('[data-goal-mode="medium"]').click();
-  return { document, window, state: sandbox.testApi.state, api: sandbox.testApi, requests, listeners, flush, getSaved: () => remote };
+  return { document, window, state: sandbox.testApi.state, swipe: sandbox.testApi.swipes, api: sandbox.testApi, requests, listeners, flush, advanceTime: (milliseconds) => { clockOffset += milliseconds; }, getSaved: () => remote };
 }
 
 function pointer(app, type, x, y, overrides = {}, target = app.document.getElementById("flashcard")) {
@@ -344,10 +352,10 @@ test("first mouse drag captures the card, shows green feedback and rates exactly
   assert.equal(pointer(app, "pointerdown", 100, 100).defaultPrevented, true);
   assert.equal(element.hasPointerCapture(1), true);
   assert.equal(pointer(app, "pointermove", 220, 105, {}, app.window).defaultPrevented, true);
-  assert.equal(app.state.drag.active, true);
+  assert.equal(app.swipe.gesture.active, true);
   assert.equal(Number(element.style.getPropertyValue("--swipe-right-opacity")), 1);
   pointer(app, "pointerup", 220, 105);
-  assert.equal(app.state.drag, null);
+  assert.equal(app.swipe.gesture, null);
   assert.equal(element.hasPointerCapture(1), false);
   assert.equal(card.attempts, attempts + 1);
   assert.equal(card.correct, correct + 1);
@@ -378,27 +386,27 @@ test("vertical touch motion leaves native page scrolling available without ratin
   const attempts = card.attempts;
   touch(app, "touchstart", 100, 100);
   assert.equal(touch(app, "touchmove", 103, 200).defaultPrevented, false);
-  assert.equal(app.state.drag.axis, "y");
+  assert.equal(app.swipe.gesture.axis, "y");
   assert.equal(touch(app, "touchmove", 230, 210).defaultPrevented, false);
-  assert.equal(app.state.drag.active, false);
+  assert.equal(app.swipe.gesture.active, false);
   assert.equal(app.document.getElementById("flashcard").style.transform || "", "");
   touch(app, "touchend", 230, 210);
   assert.equal(card.attempts, attempts);
   app.document.getElementById("flashcard").click();
   assert.equal(app.state.flipped, false);
-  app.state.ignoreFlipUntil = 0;
+  app.advanceTime(500);
   pointer(app, "pointerdown", 100, 100);
   pointer(app, "pointerup", 100, 100);
   app.document.getElementById("flashcard").click();
   assert.equal(app.state.flipped, true);
   for (const id of ["listenCardButton", "cardTranslation"]) {
     pointer(app, "pointerdown", 100, 100, {}, app.document.getElementById(id));
-    assert.equal(app.state.drag, null);
+    assert.equal(app.swipe.gesture, null);
   }
   pointer(app, "pointerdown", 100, 100, { button: 2 });
-  assert.equal(app.state.drag, null);
+  assert.equal(app.swipe.gesture, null);
   pointer(app, "pointerdown", 100, 100, { isPrimary: false });
-  assert.equal(app.state.drag, null);
+  assert.equal(app.swipe.gesture, null);
 });
 
 test("touch swipes work on the first attempt after vertical jitter in either direction", async () => {
@@ -410,12 +418,12 @@ test("touch swipes work on the first attempt after vertical jitter in either dir
     const correct = card.correct;
     touch(app, "touchstart", 200, 200);
     touch(app, "touchmove", 201, 203);
-    assert.equal(app.state.drag.active, false);
+    assert.equal(app.swipe.gesture.active, false);
     assert.equal(element.hasPointerCapture(1), false);
     assert.equal(touch(app, "touchmove", 200 + direction * 20, 210).defaultPrevented, true);
-    assert.equal(app.state.drag.axis, "x");
+    assert.equal(app.swipe.gesture.axis, "x");
     assert.equal(touch(app, "touchmove", 200 + direction * 120, 500).defaultPrevented, true);
-    assert.equal(app.state.drag.active, true);
+    assert.equal(app.swipe.gesture.active, true);
     assert.ok(element.style.transform.includes(`translateX(${direction * 120}px)`));
     touch(app, "touchend", 200 + direction * 120, 500);
     assert.equal(card.attempts, attempts + 1);
@@ -433,12 +441,12 @@ test("a touch swipe survives compatibility pointer cancellation and is rated onl
   const card = app.api.currentCard();
   const attempts = card.attempts;
   pointer(app, "pointerdown", 100, 100, { pointerType: "touch" });
-  assert.equal(app.state.drag, null);
+  assert.equal(app.swipe.gesture, null);
   touch(app, "touchstart", 100, 100);
   touch(app, "touchmove", 125, 104);
   for (const type of ["pointercancel", "lostpointercapture", "pointerup"]) {
     pointer(app, type, 230, 200, { pointerType: "touch" });
-    assert.equal(app.state.drag.axis, "x");
+    assert.equal(app.swipe.gesture.axis, "x");
     assert.equal(card.attempts, attempts);
   }
   touch(app, "touchmove", 230, 200);
@@ -463,7 +471,7 @@ test("touch cancellation, multitouch and window blur clear the gesture without r
       target: app.window,
       touches: [{ identifier: 7, clientX: 230, clientY: 110 }, { identifier: 8, clientX: 300, clientY: 110 }],
     });
-    assert.equal(app.state.drag, null);
+    assert.equal(app.swipe.gesture, null);
     assert.equal(element.style.transform, "");
     touch(app, "touchend", 230, 110);
     assert.equal(card.attempts, attempts);
@@ -483,7 +491,7 @@ test("touch taps still flip the card and listening or translation controls never
   assert.equal(app.state.flipped, true);
   for (const id of ["listenCardButton", "cardTranslation"]) {
     touch(app, "touchstart", 100, 100, { target: app.document.getElementById(id) });
-    assert.equal(app.state.drag, null);
+    assert.equal(app.swipe.gesture, null);
   }
 });
 
@@ -497,7 +505,7 @@ test("touch thresholds stay stable across layout changes and unrelated touchend 
   touch(app, "touchmove", 160, 110);
   Object.defineProperty(element, "clientWidth", { value: 600 });
   touch(app, "touchend", 160, 110, { changedTouches: [{ identifier: 8, clientX: 160, clientY: 110 }] });
-  assert.equal(app.state.drag.touchId, 7);
+  assert.equal(app.swipe.gesture.touchId, 7);
   assert.equal(card.attempts, attempts);
   touch(app, "touchend", 160, 110);
   assert.equal(card.attempts, attempts + 1);
@@ -515,7 +523,7 @@ test("a short horizontal touch drag does not flip or rate and a committed native
   assert.equal(card.attempts, attempts);
   touch(app, "touchstart", 100, 100);
   touch(app, "touchmove", 230, 110, { cancelable: false });
-  assert.equal(app.state.drag.axis, "y");
+  assert.equal(app.swipe.gesture.axis, "y");
   assert.equal(touch(app, "touchmove", 250, 110).defaultPrevented, false);
   touch(app, "touchend", 250, 110);
   assert.equal(card.attempts, attempts);
@@ -537,7 +545,7 @@ test("short drags and cancelled gestures reset cleanly without accidental answer
     pointer(app, "pointermove", 200, 100, {}, app.window);
     if (type === "blur") app.window.dispatchEvent(new app.window.Event("blur"));
     else pointer(app, type, 200, 100);
-    assert.equal(app.state.drag, null);
+    assert.equal(app.swipe.gesture, null);
     assert.equal(element.style.transform, "");
     assert.equal(card.attempts, attempts);
   }
@@ -559,7 +567,7 @@ test("a narrow card accepts a shorter swipe and ignores other fingers", async ()
   pointer(app, "pointerdown", 100, 100);
   pointer(app, "pointermove", 200, 100, { pointerId: 2 }, app.window);
   pointer(app, "pointercancel", 200, 100, { pointerId: 2 });
-  assert.equal(app.state.drag.pointerId, 1);
+  assert.equal(app.swipe.gesture.pointerId, 1);
   pointer(app, "pointermove", 160, 100, {}, app.window);
   pointer(app, "pointerup", 160, 100);
   assert.equal(card.attempts, attempts + 1);

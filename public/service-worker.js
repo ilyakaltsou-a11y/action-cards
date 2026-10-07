@@ -1,9 +1,11 @@
-const CACHE_NAME = "action-cards:v65";
+const CACHE_NAME = "action-cards:v66";
 const ASSETS = [
   "./",
   "./index.html",
   "./styles.css",
   "./app.js",
+  "./modules/activity.js",
+  "./modules/swipe.js",
   "./default-cards.json",
   "./manifest.webmanifest",
   "./icon.svg",
@@ -37,7 +39,7 @@ self.addEventListener("fetch", (event) => {
         }
         return response;
       })
-      .catch(() => caches.match(event.request))
+      .catch(() => caches.match(event.request, { ignoreSearch: true }))
   );
 });
 

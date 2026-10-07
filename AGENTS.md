@@ -8,3 +8,5 @@
 - `public/` contains the canonical browser assets. `src/worker.js` contains the shared API used by Cloudflare and the local Node server.
 - Local-only filesystem and HTTP adapters belong in `src/local/`. Do not duplicate AI prompts or API handlers in `server.js`.
 - Generate the standalone Cloudflare file with `npm run build:worker`; never edit it by hand.
+- Isolated browser logic belongs in `public/modules/`. Keep module scripts before `app.js` in the HTML and include them in offline-cache tests.
+- Root browser files and `modules/` are compatibility copies generated with `npm run sync:browser` (also run by the Worker build). Edit the canonical files in `public/`, not their copies.

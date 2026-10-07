@@ -7,7 +7,7 @@ const LANGUAGE_KEY = "action-cards:language:v1";
 const POLISH_KEY = "action-cards:polish:v1";
 const ENGLISH_TRAINER_KEY = "action-cards:english-trainer:v1";
 const STUDY_SETTINGS_KEY = "action-cards:study-settings:v1";
-const DEFAULT_CARDS_URL = "default-cards.json?v=65";
+const DEFAULT_CARDS_URL = "default-cards.json?v=66";
 const STARTER_PACKS_KEY = "action-cards:starter-packs:v1";
 const BASIC_ACTIONS_PACK = "basic-actions-v1";
 const BASIC_ACTIONS_FOLDER = "Стартовые / Действия с предметами";
@@ -40,15 +40,6 @@ const SONG_CARD_TIMEOUT = 480 * 1000;
 const POLISH_AI_TIMEOUT = 120 * 1000;
 const POLISH_PREFETCH_TARGET = 3;
 const MAX_SONG_LINES = 24;
-const SWIPE_THRESHOLD = 86;
-const DAILY_GOAL_OPTIONS = {
-  easy: { label: "Легкий", cards: 1 },
-  medium: { label: "Средний", cards: 7 },
-  hard: { label: "Сложный", cards: 15 },
-};
-const DEFAULT_DAILY_GOAL_MODE = "medium";
-const ACTIVITY_MILESTONES = [14, 30, 180, 365];
-const FREEZE_REVIEW_STEP = 30;
 const TOPICS = [
   { id: "daily", label: "Быт" },
   { id: "work", label: "Работа и учеба" },
@@ -97,8 +88,6 @@ const state = {
   polishHintVisible: false,
   polishUsedWordsVisible: false,
   polishPrefetching: false,
-  drag: null,
-  ignoreFlipUntil: 0,
 };
 
 const els = {
@@ -267,6 +256,18 @@ const els = {
   polishFeedback: document.querySelector("#polishFeedback"),
   polishStatus: document.querySelector("#polishStatus"),
 };
+
+const { normalizeActivity, mergeActivity, activitiesHaveSameSyncState } = globalThis.ActionCardsActivity;
+const activityTracker = globalThis.ActionCardsActivity.createActivityTracker({
+  getActivity: () => state.activity,
+  setActivity: (activity) => { state.activity = activity; },
+  persist: persistActivity,
+});
+const { prepare: prepareActivity, recordStudy: recordStudyActivity, hasChosenGoal: hasChosenActivityGoal, milestoneLabel } = activityTracker;
+const swipes = globalThis.ActionCardsSwipe.createSwipeController({
+  element: els.flashcard, eventTarget: window,
+  hasCard: () => Boolean(currentCard()), onRate: rateCard,
+});
 
 function normalizeWord(value) {
   return value.trim().toLowerCase().replace(/[^a-z -]/g, "").replace(/\s+/g, " ");
@@ -700,70 +701,6 @@ function foldersHaveSameSyncState(leftFolders = [], rightFolders = []) {
     JSON.stringify(rightFolders.map(normalizeFolderPath).filter(Boolean).sort());
 }
 
-function normalizeActivity(activity = {}) {
-  const days = {};
-  if (activity && typeof activity.days === "object") {
-    Object.entries(activity.days).forEach(([date, count]) => {
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
-      const cleanCount = Math.max(0, Math.min(999, Number(count) || 0));
-      if (cleanCount > 0) days[date] = cleanCount;
-    });
-  }
-
-  const frozenDays = {};
-  if (activity && typeof activity.frozenDays === "object") {
-    Object.entries(activity.frozenDays).forEach(([date, isFrozen]) => {
-      if (/^\d{4}-\d{2}-\d{2}$/.test(date) && isFrozen) frozenDays[date] = true;
-    });
-  }
-
-  return {
-    days,
-    frozenDays,
-    freezes: Math.max(0, Math.min(999, Number(activity?.freezes) || 0)),
-    totalReviews: Math.max(0, Number(activity?.totalReviews) || 0),
-    goalMode: DAILY_GOAL_OPTIONS[activity?.goalMode] ? activity.goalMode : "",
-    lastWeeklyFreeze: String(activity?.lastWeeklyFreeze || ""),
-    updatedAt: Number.isFinite(activity?.updatedAt) ? activity.updatedAt : 0,
-  };
-}
-
-function mergeActivity(serverActivity = {}, localActivity = {}) {
-  const server = normalizeActivity(serverActivity);
-  const local = normalizeActivity(localActivity);
-  const days = { ...server.days };
-  const frozenDays = { ...server.frozenDays, ...local.frozenDays };
-
-  Object.entries(local.days).forEach(([date, count]) => {
-    days[date] = Math.max(days[date] || 0, count);
-  });
-
-  return {
-    days,
-    frozenDays,
-    freezes: Math.max(server.freezes || 0, local.freezes || 0),
-    totalReviews: Math.max(server.totalReviews || 0, local.totalReviews || 0),
-    goalMode: local.goalMode || server.goalMode || "",
-    lastWeeklyFreeze: [server.lastWeeklyFreeze, local.lastWeeklyFreeze].sort().at(-1) || "",
-    updatedAt: Math.max(server.updatedAt || 0, local.updatedAt || 0),
-  };
-}
-
-function activitiesHaveSameSyncState(leftActivity = {}, rightActivity = {}) {
-  const normalizeForCompare = (activity) => {
-    const normalized = normalizeActivity(activity);
-    return {
-      days: Object.fromEntries(Object.entries(normalized.days).sort(([left], [right]) => left.localeCompare(right))),
-      frozenDays: Object.fromEntries(Object.entries(normalized.frozenDays).sort(([left], [right]) => left.localeCompare(right))),
-      freezes: normalized.freezes,
-      totalReviews: normalized.totalReviews,
-      goalMode: normalized.goalMode,
-      lastWeeklyFreeze: normalized.lastWeeklyFreeze,
-    };
-  };
-  return JSON.stringify(normalizeForCompare(leftActivity)) === JSON.stringify(normalizeForCompare(rightActivity));
-}
-
 function normalizeEnglishTrainerWord(value) {
   return String(value || "")
     .trim()
@@ -1106,16 +1043,6 @@ function getStudyDeck() {
   return state.cards.filter(folderMatches);
 }
 
-function difficultyScore(card) {
-  const attempts = Math.max(0, card.attempts || 0);
-  const correct = Math.max(0, card.correct || 0);
-  const misses = Math.max(0, attempts - correct);
-  const accuracy = attempts ? correct / attempts : 0;
-  const level = Math.max(0, card.level || 0);
-
-  return misses * 80 + (1 - accuracy) * 90 + (REVIEW_INTERVALS.length - 1 - level) * 12;
-}
-
 function currentCard() {
   return getStudyDeck()[state.currentIndex] || null;
 }
@@ -1165,153 +1092,9 @@ function reviewLabel(card) {
   return `Через ${Math.ceil(minutes / 1440)} д`;
 }
 
-function localDateKey(date = new Date()) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function dateFromKey(dateKey) {
-  const [year, month, day] = dateKey.split("-").map(Number);
-  return new Date(year, month - 1, day);
-}
-
-function shiftDateKey(dateKey, offsetDays) {
-  const date = dateFromKey(dateKey);
-  date.setDate(date.getDate() + offsetDays);
-  return localDateKey(date);
-}
-
-function weekKey(date = new Date()) {
-  const start = new Date(date.getFullYear(), 0, 1);
-  const dayOffset = Math.floor((date - start) / 86400000);
-  return `${date.getFullYear()}-w${String(Math.floor(dayOffset / 7) + 1).padStart(2, "0")}`;
-}
-
-function selectedGoalMode() {
-  return DAILY_GOAL_OPTIONS[state.activity?.goalMode] ? state.activity.goalMode : DEFAULT_DAILY_GOAL_MODE;
-}
-
-function dailyActivityGoal() {
-  return DAILY_GOAL_OPTIONS[selectedGoalMode()].cards;
-}
-
-function dailyActivityGoalLabel() {
-  return DAILY_GOAL_OPTIONS[selectedGoalMode()].label;
-}
-
-function hasChosenActivityGoal() {
-  return Boolean(DAILY_GOAL_OPTIONS[state.activity?.goalMode]);
-}
-
-function isCompletedActivityDate(dateKey) {
-  return (state.activity.days?.[dateKey] || 0) >= dailyActivityGoal();
-}
-
-function isFrozenActivityDate(dateKey) {
-  return Boolean(state.activity.frozenDays?.[dateKey]);
-}
-
-function completedActivityDates() {
-  const dates = new Set();
-  Object.entries(state.activity.days || {}).forEach(([date, count]) => {
-    if (count >= dailyActivityGoal()) dates.add(date);
-  });
-  Object.keys(state.activity.frozenDays || {}).forEach((date) => dates.add(date));
-  return dates;
-}
-
 function persistActivity() {
   localStorage.setItem(getLocalActivityKey(), JSON.stringify(state.activity));
   syncCardsToServer();
-}
-
-function grantWeeklyFreeze() {
-  const currentWeek = weekKey();
-  if (state.activity.lastWeeklyFreeze === currentWeek) return false;
-  state.activity.lastWeeklyFreeze = currentWeek;
-  state.activity.freezes += 1;
-  return true;
-}
-
-function applyAutomaticFreezes() {
-  const today = localDateKey();
-  const yesterday = shiftDateKey(today, -1);
-  const activeDates = [...completedActivityDates()].filter((date) => date < today).sort();
-  if (!activeDates.length) return false;
-
-  let changed = false;
-  let cursor = shiftDateKey(activeDates.at(-1), 1);
-  while (cursor <= yesterday) {
-    if (!isCompletedActivityDate(cursor) && !isFrozenActivityDate(cursor)) {
-      if (state.activity.freezes <= 0) break;
-      state.activity.frozenDays[cursor] = true;
-      state.activity.freezes -= 1;
-      changed = true;
-    }
-    cursor = shiftDateKey(cursor, 1);
-  }
-
-  return changed;
-}
-
-function prepareActivity() {
-  state.activity = normalizeActivity(state.activity);
-  let changed = false;
-  changed = grantWeeklyFreeze() || changed;
-  changed = applyAutomaticFreezes() || changed;
-
-  if (changed) {
-    state.activity.updatedAt = Date.now();
-    persistActivity();
-  }
-}
-
-function calculateActivityStreak() {
-  const completed = completedActivityDates();
-  const today = localDateKey();
-  const yesterday = shiftDateKey(today, -1);
-  let cursor = completed.has(today) ? today : completed.has(yesterday) ? yesterday : "";
-  let streak = 0;
-
-  while (cursor && completed.has(cursor)) {
-    streak += 1;
-    cursor = shiftDateKey(cursor, -1);
-  }
-
-  return streak;
-}
-
-function calculateBestActivityStreak() {
-  const dates = [...completedActivityDates()].sort();
-  let best = 0;
-  let current = 0;
-  let previous = "";
-
-  dates.forEach((date) => {
-    current = previous && shiftDateKey(previous, 1) === date ? current + 1 : 1;
-    best = Math.max(best, current);
-    previous = date;
-  });
-
-  return best;
-}
-
-function milestoneLabel(days) {
-  if (days === 30) return "1 месяц";
-  if (days === 180) return "6 месяцев";
-  if (days === 365) return "1 год";
-  return `${days} дней`;
-}
-
-function flameLevel(todayCount, todayDone, streak) {
-  if (!todayCount && !todayDone) return 0;
-  if (todayCount < 3) return 1;
-  if (!todayDone) return 2;
-  if (streak >= 14) return 5;
-  if (streak >= 7) return 4;
-  return 3;
 }
 
 function setFlameLevel(element, level) {
@@ -1322,17 +1105,7 @@ function setFlameLevel(element, level) {
 
 function renderActivity() {
   if (!els.activitySummary || !els.activityButton) return;
-  prepareActivity();
-
-  const today = localDateKey();
-  const todayCount = state.activity.days?.[today] || 0;
-  const goal = dailyActivityGoal();
-  const todayDone = hasChosenActivityGoal() && todayCount >= goal;
-  const progress = Math.min(100, Math.round((todayCount / goal) * 100));
-  const streak = calculateActivityStreak();
-  const nextMilestone = ACTIVITY_MILESTONES.find((days) => streak < days) || ACTIVITY_MILESTONES.at(-1);
-  const daysToGoal = Math.max(0, nextMilestone - streak);
-  const currentFlameLevel = flameLevel(todayCount, todayDone, streak);
+  const { todayCount, goal, todayDone, progress, streak, nextMilestone, daysToGoal, flameLevel: currentFlameLevel, goalLabel } = activityTracker.summary();
 
   els.activityFlame.classList.toggle("is-lit", todayDone);
   els.activityDialogFlame.classList.toggle("is-lit", todayDone);
@@ -1345,42 +1118,10 @@ function renderActivity() {
   );
   els.activitySummary.textContent = `${Math.min(todayCount, goal)}/${goal} карточек`;
   els.activityProgressFill.style.width = `${progress}%`;
-  els.activityProgressText.textContent = todayDone ? "Огонек зажжен сегодня" : `${dailyActivityGoalLabel()} уровень · осталось ${goal - Math.min(todayCount, goal)}`;
+  els.activityProgressText.textContent = todayDone ? "Огонек зажжен сегодня" : `${goalLabel} уровень · осталось ${goal - Math.min(todayCount, goal)}`;
   els.activityStreakText.textContent = `Серия: ${streak} дн.`;
   els.activityGoalText.textContent = daysToGoal ? `Цель ${milestoneLabel(nextMilestone)}: еще ${daysToGoal} дн.` : `Цель ${milestoneLabel(nextMilestone)} выполнена`;
   els.activityFreezeText.textContent = `Заморозки: ${state.activity.freezes}`;
-}
-
-function recordStudyActivity() {
-  prepareActivity();
-  const today = localDateKey();
-  const goal = dailyActivityGoal();
-  const previousCount = Number(state.activity.days?.[today]) || 0;
-  const wasComplete = hasChosenActivityGoal() && previousCount >= goal;
-  const previousStreak = calculateActivityStreak();
-  const previousReviewBucket = Math.floor((state.activity.totalReviews || 0) / FREEZE_REVIEW_STEP);
-
-  state.activity = normalizeActivity(state.activity);
-  state.activity.days[today] = previousCount + 1;
-  state.activity.totalReviews += 1;
-  state.activity.updatedAt = Date.now();
-
-  const isComplete = hasChosenActivityGoal() && state.activity.days[today] >= goal;
-  const streak = calculateActivityStreak();
-  const reviewBucket = Math.floor(state.activity.totalReviews / FREEZE_REVIEW_STEP);
-  const earnedFreezes = Math.max(0, reviewBucket - previousReviewBucket);
-  if (earnedFreezes) state.activity.freezes += earnedFreezes;
-  const messages = [];
-
-  if (!wasComplete && isComplete) {
-    const reachedMilestone = ACTIVITY_MILESTONES.find((days) => previousStreak < days && streak >= days);
-    messages.push(reachedMilestone
-      ? `Огонек зажегся. Цель достигнута: ${milestoneLabel(reachedMilestone)} подряд.`
-      : "Огонек зажегся: день засчитан.");
-  }
-
-  if (earnedFreezes) messages.push(`Получена заморозка за ${FREEZE_REVIEW_STEP} карточек.`);
-  return messages.join(" ");
 }
 
 function openAppDialog(dialog) {
@@ -1414,17 +1155,13 @@ function syncGoalDialog() {
 }
 
 function chooseActivityGoal(mode) {
-  if (!DAILY_GOAL_OPTIONS[mode]) return;
-  state.activity = normalizeActivity(state.activity);
-  state.activity.goalMode = mode;
-  state.activity.updatedAt = Date.now();
-  persistActivity();
+  if (!activityTracker.chooseGoal(mode)) return;
   closeGoalDialog();
   renderActivity();
 }
 
 function renderStudy(index = state.currentIndex) {
-  cancelSwipe();
+  swipes.cancel();
   if (state.activeFolder !== "all" && !getFolderTreePaths().includes(state.activeFolder)) state.activeFolder = "all";
   const deck = getStudyDeck();
 
@@ -1739,7 +1476,7 @@ function expandActiveFolderAncestors() {
 }
 
 function flipCard() {
-  if (Date.now() < state.ignoreFlipUntil) return;
+  if (!swipes.canFlip()) return;
   if (!currentCard()) return;
   state.flipped = !state.flipped;
   els.flashcard.classList.toggle("is-flipped", state.flipped);
@@ -1838,125 +1575,6 @@ function moveRatedCard(card, known) {
   const targetCard = visibleCards[targetVisibleIndex] || visibleCards[0];
   const targetIndex = state.cards.findIndex((savedCard) => savedCard.id === targetCard.id);
   state.cards.splice(Math.max(0, targetIndex), 0, card);
-}
-
-function setSwipeVisual(deltaX) {
-  const capped = Math.max(-190, Math.min(190, deltaX));
-  const rawProgress = Math.min(1, Math.abs(capped) / (state.drag?.threshold || swipeThreshold()));
-  const progress = Math.min(1, rawProgress * 1.35);
-  els.flashcard.style.transform = `translateX(${capped}px) rotate(${capped / 13}deg)`;
-  els.flashcard.style.setProperty("--swipe-left-opacity", capped < 0 ? progress : 0);
-  els.flashcard.style.setProperty("--swipe-right-opacity", capped > 0 ? progress : 0);
-  els.flashcard.style.setProperty("--swipe-left-bg", capped < 0 ? progress : 0);
-  els.flashcard.style.setProperty("--swipe-right-bg", capped > 0 ? progress : 0);
-}
-
-function resetSwipeVisual() {
-  els.flashcard.classList.remove("is-dragging");
-  els.flashcard.style.transform = "";
-  els.flashcard.style.setProperty("--swipe-left-opacity", 0);
-  els.flashcard.style.setProperty("--swipe-right-opacity", 0);
-  els.flashcard.style.setProperty("--swipe-left-bg", 0);
-  els.flashcard.style.setProperty("--swipe-right-bg", 0);
-}
-
-function swipeThreshold() {
-  const width = els.flashcard.clientWidth || SWIPE_THRESHOLD * 4;
-  return Math.min(SWIPE_THRESHOLD, Math.max(48, width * 0.25));
-}
-
-function startSwipe(event) {
-  if (event.pointerType === "touch") return;
-  if (!currentCard() || state.drag || event.isPrimary === false) return;
-  if (event.pointerType === "mouse" && event.button !== 0) return;
-  if (event.target.closest?.(".listen-button, .translation-chip")) return;
-  if (event.pointerType === "mouse") {
-    event.preventDefault();
-    els.flashcard.focus({ preventScroll: true });
-  }
-  state.drag = { input: "pointer", pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, active: false, threshold: swipeThreshold() };
-  els.flashcard.setPointerCapture?.(event.pointerId);
-}
-
-function moveSwipe(event) {
-  if (state.drag?.input !== "pointer" || state.drag.pointerId !== event.pointerId) return;
-  event.preventDefault();
-  const deltaX = event.clientX - state.drag.startX;
-  const deltaY = event.clientY - state.drag.startY;
-  if (Math.abs(deltaY) >= 8) state.drag.moved = true;
-  if (!state.drag.active) {
-    if (Math.abs(deltaX) < 8) return;
-  }
-
-  state.drag.active = true;
-  els.flashcard.classList.add("is-dragging");
-  setSwipeVisual(deltaX);
-}
-
-function finishSwipe(event) {
-  if (state.drag?.input !== "pointer" || state.drag.pointerId !== event.pointerId) return;
-  completeSwipe(event.clientX);
-}
-
-function completeSwipe(clientX) {
-  const { startX, active, moved, pointerId, input, threshold } = state.drag;
-  const deltaX = clientX - startX;
-  state.drag = null;
-  resetSwipeVisual();
-  if (input === "pointer" && els.flashcard.hasPointerCapture?.(pointerId)) els.flashcard.releasePointerCapture(pointerId);
-
-  if (active || moved) state.ignoreFlipUntil = Date.now() + 450;
-  if (!active || Math.abs(deltaX) < threshold) return;
-  rateCard(deltaX > 0);
-}
-
-function cancelSwipe(event) {
-  if (!state.drag) return;
-  // Browsers may cancel pointer events while the separate touch gesture is still alive.
-  if (event?.pointerId !== undefined && (state.drag.input !== "pointer" || event.pointerId !== state.drag.pointerId)) return;
-  const { pointerId, active, moved, input } = state.drag;
-  state.drag = null;
-  if (active || moved) state.ignoreFlipUntil = Date.now() + 450;
-  resetSwipeVisual();
-  if (input === "pointer" && els.flashcard.hasPointerCapture?.(pointerId)) els.flashcard.releasePointerCapture(pointerId);
-}
-
-function startTouchSwipe(event) {
-  if (event.touches.length !== 1 || state.drag || !currentCard()) return;
-  if (event.target.closest?.(".listen-button, .translation-chip")) return;
-  const touch = event.touches[0];
-  state.drag = { input: "touch", touchId: touch.identifier, startX: touch.clientX, startY: touch.clientY, axis: null, active: false, threshold: swipeThreshold() };
-}
-
-function moveTouchSwipe(event) {
-  const drag = state.drag;
-  if (drag?.input !== "touch") return;
-  if (event.touches.length !== 1) {
-    drag.moved = true;
-    cancelSwipe();
-    return;
-  }
-  const touch = [...event.touches].find((item) => item.identifier === drag.touchId);
-  if (!touch) return;
-  const deltaX = touch.clientX - drag.startX;
-  const deltaY = touch.clientY - drag.startY;
-  if (!drag.axis) {
-    if (Math.max(Math.abs(deltaX), Math.abs(deltaY)) < 6) return;
-    drag.moved = true;
-    // Decide once: later vertical drift must never hand a horizontal swipe to page scrolling.
-    drag.axis = event.cancelable && Math.abs(deltaX) >= Math.abs(deltaY) * 0.8 ? "x" : "y";
-  }
-  if (drag.axis !== "x") return;
-  if (event.cancelable) event.preventDefault();
-  drag.active = true;
-  els.flashcard.classList.add("is-dragging");
-  setSwipeVisual(deltaX);
-}
-
-function finishTouchSwipe(event) {
-  if (state.drag?.input !== "touch") return;
-  const touch = [...event.changedTouches].find((item) => item.identifier === state.drag.touchId);
-  if (touch) completeSwipe(touch.clientX);
 }
 
 async function updateAiStatus() {
@@ -3944,27 +3562,7 @@ els.flashcard.addEventListener("keydown", (event) => {
 });
 els.againButton.addEventListener("click", () => rateCard(false));
 els.gotItButton.addEventListener("click", () => rateCard(true));
-els.flashcard.addEventListener("pointerdown", startSwipe);
-els.flashcard.addEventListener("pointerup", finishSwipe);
-els.flashcard.addEventListener("pointercancel", cancelSwipe);
-els.flashcard.addEventListener("lostpointercapture", cancelSwipe);
-window.addEventListener("pointerup", finishSwipe);
-window.addEventListener("pointercancel", cancelSwipe);
-window.addEventListener("pointermove", moveSwipe, { passive: false });
-els.flashcard.addEventListener("touchstart", startTouchSwipe, { passive: true });
-window.addEventListener("touchstart", (event) => {
-  if (event.touches.length > 1 && state.drag?.input === "touch") {
-    state.drag.moved = true;
-    cancelSwipe();
-  }
-}, { passive: true });
-els.flashcard.addEventListener("touchmove", moveTouchSwipe, { passive: false });
-els.flashcard.addEventListener("touchend", finishTouchSwipe, { passive: true });
-els.flashcard.addEventListener("touchcancel", () => {
-  if (state.drag?.input === "touch") cancelSwipe();
-}, { passive: true });
-window.addEventListener("blur", cancelSwipe);
-els.flashcard.addEventListener("dragstart", (event) => event.preventDefault());
+swipes.attach();
 els.loadProfileButton.addEventListener("click", () => openProfile(els.profileInput.value));
 els.newProfileButton.addEventListener("click", createNewProfile);
 els.createFolderButton.addEventListener("click", createFolder);

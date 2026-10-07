@@ -43,6 +43,8 @@ The local server listens only on this computer by default. Set `HOST=0.0.0.0` on
 ## Code Structure
 
 - `public/`: canonical browser interface, styles, starter cards, and assets.
+- `public/modules/activity.js`: activity goals, streaks, freezes, and saved activity compatibility.
+- `public/modules/swipe.js`: isolated touch/pointer gestures and visual swipe feedback.
 - `src/worker.js`: one API implementation for both Cloudflare and local development, including AI prompts.
 - `server.js`: Node HTTP adapter that starts the shared API locally.
 - `src/local/`: local environment loading, filesystem storage, and public asset serving.
@@ -50,15 +52,15 @@ The local server listens only on this computer by default. Set `HOST=0.0.0.0` on
 
 Local profiles keep their existing `data/profiles/` format. Generated images remain in `assets/ai/`; both old image links and new `/images/` links work locally. Older digit-stripped profile filenames are read as a fallback, while future saves use the full profile code. Writes replace files atomically rather than overwriting them in place.
 
-Only `public/` and the generated-image directory are served to the browser, never the repository root or environment files. Root-level browser copies are retained for compatibility with existing workflows; edit `public/` first.
+Only `public/` and the generated-image directory are served to the browser, never the repository root or environment files. Root-level browser files and `modules/` are generated compatibility copies; edit `public/` and run `npm run sync:browser`. Building the standalone Worker also refreshes these copies automatically.
+
+Browser modules load before `app.js` and are included in the offline cache and standalone Worker. The single file pasted into Cloudflare remains a generated bundle: its line count is not the line count of the editable interface code.
 
 ## Checks
 
 ```sh
-node --check app.js
-node --check public/app.js
-node --check server.js
-node --input-type=module --check < src/worker.js
+npm run check
+npm test
 ```
 
 ## Cloudflare

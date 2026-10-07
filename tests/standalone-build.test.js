@@ -4,6 +4,7 @@ const path = require("node:path");
 const vm = require("node:vm");
 const { execFileSync } = require("node:child_process");
 const { test } = require("node:test");
+const { parseHTML } = require("linkedom");
 
 test("standalone Cloudflare build serves the canonical UI and shared API without external assets", async () => {
   const root = path.resolve(__dirname, "..");
@@ -16,6 +17,14 @@ test("standalone Cloudflare build serves the canonical UI and shared API without
   const home = await worker.fetch(new Request("https://cards.example/"), {});
   assert.equal(home.status, 200);
   assert.equal(await home.text(), fs.readFileSync(path.join(root, "public/index.html"), "utf8"));
+  const { document } = parseHTML(fs.readFileSync(path.join(root, "public/index.html"), "utf8"));
+  for (const script of document.querySelectorAll("script[src]")) {
+    const sourceUrl = script.getAttribute("src");
+    const response = await worker.fetch(new Request(`https://cards.example/${sourceUrl}`), {});
+    assert.equal(response.status, 200, sourceUrl);
+    assert.equal(response.headers.get("content-type"), "text/javascript; charset=utf-8");
+    assert.equal(await response.text(), fs.readFileSync(path.join(root, "public", sourceUrl.split("?")[0]), "utf8"));
+  }
   const icons = await worker.fetch(new Request("https://cards.example/assets/icons.svg"), {});
   assert.equal(icons.status, 200);
   assert.equal(icons.headers.get("content-type"), "image/svg+xml");

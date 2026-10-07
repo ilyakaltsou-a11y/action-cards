@@ -1,10 +1,12 @@
 const fs = require("node:fs");
 const path = require("node:path");
+const { syncBrowserCopies } = require("./sync-browser.js");
 
 const root = path.resolve(__dirname, "..");
 const publicDir = path.join(root, "public");
 const workerSourcePath = path.join(root, "src", "worker.js");
 const outputPath = path.join(root, "src", "worker-standalone.js");
+syncBrowserCopies(root);
 
 const indexHtml = fs.readFileSync(path.join(publicDir, "index.html"), "utf8");
 const appVersion = indexHtml.match(/app\.js\?v=(\d+)/)?.[1] || "latest";
@@ -44,7 +46,7 @@ for (const [route, fileName, contentType] of assets) {
   output += `addAsset(${JSON.stringify(route)}, ${JSON.stringify(content)}, ${JSON.stringify(contentType)});\n`;
 }
 
-for (const filePath of listFiles(path.join(publicDir, "assets"))) {
+for (const filePath of [...listFiles(path.join(publicDir, "assets")), ...listFiles(path.join(publicDir, "modules"))]) {
   const route = `/${path.relative(publicDir, filePath).split(path.sep).join("/")}`;
   const contentType = MIME_TYPES[path.extname(filePath).toLowerCase()] || "application/octet-stream";
   const content = fs.readFileSync(filePath).toString("base64");
