@@ -1,0 +1,89 @@
+{
+  "folderPath": "Стартовые / Вопросы",
+  "cards": [
+    {
+      "word": "Can you…?",
+      "patternTranslation": "Можешь…?",
+      "phrase": "Can you bring it closer?",
+      "translation": "Можешь поднести это ближе?",
+      "question": true
+    },
+    {
+      "word": "Could you…?",
+      "patternTranslation": "Не мог бы ты…? / Можешь…?",
+      "phrase": "Could you move it over here?",
+      "translation": "Не мог бы ты передвинуть это сюда?",
+      "question": true
+    },
+    {
+      "word": "Where should I…?",
+      "patternTranslation": "Куда мне…?",
+      "phrase": "Where should I put it?",
+      "translation": "Куда мне это положить?",
+      "question": true
+    },
+    {
+      "word": "Should I…?",
+      "patternTranslation": "Мне…? / Стоит ли мне…?",
+      "phrase": "Should I leave it here?",
+      "translation": "Мне оставить это здесь?",
+      "question": true
+    },
+    {
+      "word": "Do I need to…?",
+      "patternTranslation": "Мне нужно…?",
+      "phrase": "Do I need to turn it around?",
+      "translation": "Мне нужно это развернуть?",
+      "question": true
+    },
+    {
+      "word": "Do you want me to…?",
+      "patternTranslation": "Ты хочешь, чтобы я…?",
+      "phrase": "Do you want me to bring it closer?",
+      "translation": "Ты хочешь, чтобы я поднёс это ближе?",
+      "question": true
+    },
+    {
+      "word": "Let me…",
+      "patternTranslation": "Дай я… / Позволь мне…",
+      "phrase": "Let me carry it.",
+      "translation": "Дай я это понесу.",
+      "question": false
+    },
+    {
+      "word": "You don’t have to…",
+      "patternTranslation": "Тебе не обязательно…",
+      "phrase": "You don’t have to carry it.",
+      "translation": "Тебе не обязательно это нести.",
+      "question": false
+    },
+    {
+      "word": "Would you mind…?",
+      "patternTranslation": "Не мог бы ты…? / Ты не против…?",
+      "phrase": "Would you mind moving it?",
+      "translation": "Ты не против передвинуть это?",
+      "question": true
+    },
+    {
+      "word": "Why don’t you…?",
+      "patternTranslation": "Почему бы тебе не…?",
+      "phrase": "Why don’t you leave it here?",
+      "translation": "Почему бы тебе не оставить это здесь?",
+      "question": true
+    },
+    {
+      "word": "Make sure you…",
+      "patternTranslation": "Обязательно… / Убедись, что…",
+      "phrase": "Make sure you don’t drop it.",
+      "translation": "Смотри, не урони это.",
+      "question": false
+    },
+    {
+      "word": "Don’t forget to…",
+      "patternTranslation": "Не забудь…",
+      "phrase": "Don’t forget to bring it.",
+      "translation": "Не забудь принести это.",
+      "question": false
+    }
+  ]
+}

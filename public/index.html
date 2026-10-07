@@ -7,11 +7,11 @@
     <title>Карточки действий</title>
     <script>
       if (window.location.protocol === "file:") {
-        window.location.replace(`http://127.0.0.1:5176/${window.location.search || "?v=67"}`);
+        window.location.replace(`http://127.0.0.1:5176/${window.location.search || "?v=68"}`);
       }
     </script>
     <link rel="manifest" href="manifest.webmanifest" />
-    <link rel="stylesheet" href="styles.css?v=67" />
+    <link rel="stylesheet" href="styles.css?v=68" />
   </head>
   <body>
     <div class="app-shell">
@@ -70,6 +70,7 @@
             </span>
             <span class="flashcard-face flashcard-back" id="cardBack" aria-hidden="true" inert>
               <span class="phrase" id="cardPhrase" lang="en">No cards yet</span>
+              <span class="card-pattern" id="cardPattern" hidden></span>
               <span class="card-answer-image" id="cardAnswerImage" role="img" aria-label="Иллюстрация к фразе" hidden></span>
               <span class="translation-chip is-hidden" id="cardTranslation" role="button" tabindex="0">
                 <span class="translation-label">Перевод по нажатию</span>
@@ -595,8 +596,8 @@
       </article>
     </template>
 
-    <script src="modules/activity.js?v=67"></script>
-    <script src="modules/swipe.js?v=67"></script>
-    <script src="app.js?v=67"></script>
+    <script src="modules/activity.js?v=68"></script>
+    <script src="modules/swipe.js?v=68"></script>
+    <script src="app.js?v=68"></script>
   </body>
 </html>

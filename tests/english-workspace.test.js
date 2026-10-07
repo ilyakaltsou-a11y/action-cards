@@ -128,19 +128,20 @@ function touch(app, type, x, y, options = {}) {
   return event;
 }
 
-test("complete app startup adds all 20 basic cards to an existing profile once", async () => {
+test("complete app startup adds basic action and question cards to an existing profile once", async () => {
   const app = await launch();
-  assert.equal(app.state.cards.length, 50);
+  assert.equal(app.state.cards.length, 62);
   assert.equal(app.state.cards.filter((card) => card.id.startsWith("basic-action-")).length, 20);
+  assert.equal(app.state.cards.filter((card) => card.id.startsWith("basic-question-")).length, 12);
   await app.api.loadServerCards();
-  assert.equal(app.state.cards.length, 50);
+  assert.equal(app.state.cards.length, 62);
   const ids = [...app.document.querySelectorAll("[id]")].map((element) => element.id);
   assert.equal(ids.length, new Set(ids).size);
 });
 
 test("starter pack loads with the sync server unavailable and a stale folder selection", async () => {
   const app = await launch({ offline: true, storedFolder: "Deleted folder" });
-  assert.equal(app.state.cards.length, 50);
+  assert.equal(app.state.cards.length, 62);
   assert.equal(app.state.activeFolder, "all");
   assert.ok(app.document.querySelector("#cardImage").style.backgroundImage);
 });
@@ -168,7 +169,7 @@ test("basic practice selects the folder and every action has its motion symbol",
   app.document.querySelector("#startBasicActionsButton").click();
   await app.flush();
   assert.equal(app.state.activeFolder, "Стартовые / Действия с предметами");
-  assert.equal(app.state.cards.length, 50);
+  assert.equal(app.state.cards.length, 62);
   for (let index = 0; index < 20; index += 1) {
     app.api.renderStudy(index);
     assert.equal(app.document.querySelector("#cardMotion").hidden, false);
@@ -186,7 +187,7 @@ test("creating and editing a card work after moving the form into a dialog", asy
   await app.flush();
   assert.equal(app.document.querySelector("#draftCard").hidden, false);
   app.document.querySelector("#saveDraftButton").click();
-  assert.equal(app.state.cards.length, 51);
+  assert.equal(app.state.cards.length, 63);
   assert.equal(app.document.querySelector("#cardCreatorDialog").open, false);
   app.document.querySelector("#openDeckButton").click();
   app.document.querySelector(".edit-card-button").click();
@@ -218,8 +219,40 @@ test("deleted basic cards stay deleted after reload", async () => {
   app.api.saveCards();
   await app.flush();
   await app.api.loadServerCards();
-  assert.equal(app.state.cards.length, 49);
+  assert.equal(app.state.cards.length, 61);
   assert.equal(app.state.cards.some((card) => card.id === removed.id), false);
+});
+
+test("the question starter pack upgrades existing profiles, preserves progress and stays deleted when removed", async () => {
+  const oldCards = defaults.cards.filter((card) => !card.id.startsWith("basic-question-"));
+  const existingCard = { ...oldCards[0], id: "my-existing-card", attempts: 8, correct: 6, level: 3 };
+  const app = await launch({ saved: { cards: [existingCard], starterPacks: ["basic-actions-v1"] } });
+  const questions = app.state.cards.filter((card) => card.folderPath === "Стартовые / Вопросы");
+  assert.equal(questions.length, 12);
+  assert.ok(questions.every((card) => card.textOnly && !card.imageUrl && card.patternTranslation));
+  assert.equal(app.state.cards.find((card) => card.id === existingCard.id).attempts, 8);
+  assert.equal(app.state.cards.find((card) => card.id === existingCard.id).level, 3);
+  assert.ok(app.state.starterPacks.includes("basic-questions-v1"));
+  const translated = app.api.englishTrainerWords("Стартовые / Вопросы");
+  assert.equal(translated.length, 12);
+  assert.ok(translated.every((word) => word.translation));
+  assert.ok(translated.some((word) => word.word === "would you mind"));
+  app.state.cards = app.state.cards.filter((card) => card.id !== questions[0].id);
+  app.api.saveCards();
+  await app.flush();
+  const reloaded = await launch({ saved: app.getSaved() });
+  assert.equal(reloaded.state.cards.filter((card) => card.id.startsWith("basic-question-")).length, 11);
+  reloaded.document.getElementById("startBasicActionsButton").click();
+  await reloaded.flush();
+  assert.equal(reloaded.state.cards.filter((card) => card.id.startsWith("basic-question-")).length, 11);
+});
+
+test("question starter examples do not duplicate matching personal cards", async () => {
+  const personal = { ...defaults.cards.find((card) => card.id === "basic-question-001"), id: "my-question", folderPath: "Personal", attempts: 4 };
+  const app = await launch({ saved: { cards: [personal], starterPacks: ["basic-actions-v1"] } });
+  assert.equal(app.state.cards.filter((card) => card.phrase === personal.phrase).length, 1);
+  assert.equal(app.state.cards.find((card) => card.id === "my-question").attempts, 4);
+  assert.equal(app.state.cards.filter((card) => card.id.startsWith("basic-question-")).length, 11);
 });
 
 test("picture mode retains the picture, English answer and independently revealed translation", async () => {
@@ -240,6 +273,44 @@ test("picture mode retains the picture, English answer and independently reveale
   assert.equal(doc.querySelector("#cardTranslation .translation-text").textContent, app.api.currentCard().translation);
   assert.equal(doc.getElementById("cardTranslation").classList.contains("is-hidden"), false);
   assert.equal(app.state.flipped, true);
+});
+
+test("text-only questions show Russian first, English and a construction on flip, and support swipes", async () => {
+  const app = await launch();
+  const doc = app.document;
+  app.state.activeFolder = "Стартовые / Вопросы";
+  app.api.renderStudy(0);
+  const card = app.api.currentCard();
+  assert.equal(card.textOnly, true);
+  assert.equal(app.state.studySettings.mode, "picture");
+  assert.equal(doc.getElementById("cardImage").hidden, true);
+  assert.equal(doc.querySelector('[data-study-mode="picture"]').disabled, true);
+  assert.equal(doc.querySelector('[data-study-mode="russian"]').getAttribute("aria-pressed"), "true");
+  assert.equal(doc.getElementById("cardRussianPrompt").hidden, false);
+  assert.equal(doc.getElementById("cardRussianPrompt").textContent, card.translation);
+  assert.equal(doc.getElementById("cardAnswerImage").hidden, true);
+  assert.equal(doc.getElementById("cardTranslation").hidden, true);
+  doc.getElementById("flashcard").click();
+  assert.equal(app.state.flipped, true);
+  assert.equal(doc.getElementById("cardPhrase").textContent, card.phrase);
+  assert.equal(doc.getElementById("cardPattern").hidden, false);
+  assert.equal(doc.getElementById("cardPattern").textContent, `${card.word} — ${card.patternTranslation}`);
+  assert.equal(doc.getElementById("flashcard").getAttribute("aria-label"), "Показать русский текст");
+  touch(app, "touchstart", 100, 100);
+  touch(app, "touchmove", 220, 120);
+  touch(app, "touchend", 220, 120);
+  assert.equal(card.attempts, 1);
+  assert.notEqual(app.api.currentCard().id, card.id);
+  assert.equal(doc.getElementById("cardImage").hidden, true);
+  await app.flush();
+  const restarted = await launch({ saved: app.getSaved() });
+  assert.equal(restarted.state.cards.find((item) => item.id === card.id).textOnly, true);
+  app.state.activeFolder = "Стартовые / Действия с предметами";
+  app.api.renderStudy(0);
+  assert.equal(doc.getElementById("cardImage").hidden, false);
+  assert.equal(doc.getElementById("cardPattern").hidden, true);
+  assert.equal(doc.querySelector('[data-study-mode="picture"]').disabled, false);
+  assert.equal(app.requests.filter((item) => item.route.startsWith("/api/create")).length, 0);
 });
 
 test("Russian mode starts with Russian and flips to English with a small existing image", async () => {

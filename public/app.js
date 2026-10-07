@@ -7,10 +7,14 @@ const LANGUAGE_KEY = "action-cards:language:v1";
 const POLISH_KEY = "action-cards:polish:v1";
 const ENGLISH_TRAINER_KEY = "action-cards:english-trainer:v1";
 const STUDY_SETTINGS_KEY = "action-cards:study-settings:v1";
-const DEFAULT_CARDS_URL = "default-cards.json?v=67";
+const DEFAULT_CARDS_URL = "default-cards.json?v=68";
 const STARTER_PACKS_KEY = "action-cards:starter-packs:v1";
 const BASIC_ACTIONS_PACK = "basic-actions-v1";
 const BASIC_ACTIONS_FOLDER = "Стартовые / Действия с предметами";
+const STARTER_PACKS = [
+  { id: BASIC_ACTIONS_PACK, prefix: "basic-action-" },
+  { id: "basic-questions-v1", prefix: "basic-question-" },
+];
 const BASIC_ACTION_MOTIONS = new Map([
   ["Pick up the phone.", "arrow-up"],
   ["Put the cup down on the table.", "arrow-down"],
@@ -100,6 +104,7 @@ const els = {
   cardBack: document.querySelector("#cardBack"),
   cardRussianPrompt: document.querySelector("#cardRussianPrompt"),
   cardAnswerImage: document.querySelector("#cardAnswerImage"),
+  cardPattern: document.querySelector("#cardPattern"),
   cardImage: document.querySelector("#cardImage"),
   cardMotion: document.querySelector("#cardMotion"),
   cardMotionIcon: document.querySelector("#cardMotionIcon"),
@@ -616,10 +621,18 @@ function normalizeStarterPacks(packs) {
 async function ensureStarterCards({ restore = false } = {}) {
   if (!state.cards.length && !state.starterPacks.length && !restore) {
     state.cards = await loadStarterCards();
-  } else if (restore || !state.starterPacks.includes(BASIC_ACTIONS_PACK)) {
-    const phrases = new Set(state.cards.map((card) => songPhraseKey(card.phrase)));
-    const basicCards = await loadStarterCards(BASIC_ACTIONS_PACK);
-    state.cards.push(...basicCards.filter((card) => !phrases.has(songPhraseKey(card.phrase))));
+    return;
+  }
+  const phrases = new Set(state.cards.map((card) => songPhraseKey(card.phrase)));
+  for (const pack of STARTER_PACKS) {
+    if (state.starterPacks.includes(pack.id) && !(restore && pack.id === BASIC_ACTIONS_PACK)) continue;
+    const cards = await loadStarterCards(pack.id);
+    for (const card of cards) {
+      const key = songPhraseKey(card.phrase);
+      if (phrases.has(key)) continue;
+      state.cards.push(card);
+      phrases.add(key);
+    }
   }
 }
 
@@ -648,12 +661,18 @@ async function loadStarterCards(pack = "") {
     if (!response.ok) throw new Error("starter cards unavailable");
     const data = await response.json();
     if (!Array.isArray(data.cards)) throw new Error("Invalid starter cards");
-    const cards = data.cards.map((card, index) => ({
+    const selectedPack = STARTER_PACKS.find((item) => item.id === pack);
+    if (pack && !selectedPack) throw new Error("Unknown starter pack");
+    const sourceCards = data.cards.filter((card) => !pack || card.id.startsWith(selectedPack.prefix));
+    const cards = sourceCards.map((card) => ({
       ...hydrateCard(card),
-      id: card.id.startsWith("basic-action-") ? `${card.id}-${state.profileId}` : `starter-${state.profileId}-${index + 1}`,
-    })).filter((card) => !pack || card.id.startsWith("basic-action-"));
-    if (data.cards.some((card) => card.id.startsWith("basic-action-"))) {
-      state.starterPacks = normalizeStarterPacks([...state.starterPacks, BASIC_ACTIONS_PACK]);
+      id: STARTER_PACKS.some((item) => card.id.startsWith(item.prefix))
+        ? `${card.id}-${state.profileId}` : `starter-${state.profileId}-${data.cards.indexOf(card) + 1}`,
+    }));
+    for (const item of STARTER_PACKS) {
+      if (sourceCards.some((card) => card.id.startsWith(item.prefix))) {
+        state.starterPacks = normalizeStarterPacks([...state.starterPacks, item.id]);
+      }
     }
     return cards.map((card, index) => ({
       ...card,
@@ -971,6 +990,8 @@ function hydrateCard(card) {
     word: card.word || "",
     phrase: card.phrase || card.answer || "",
     translation: card.translation || "",
+    patternTranslation: card.patternTranslation || "",
+    textOnly: card.textOnly === true,
     topic: card.topic || inferTopic(card),
     folderPath: normalizeFolderPath(card.folderPath) || defaultFolderForCard(card),
     scene: card.scene || card.prompt || "",
@@ -1014,6 +1035,8 @@ function cardSyncSignature(card) {
     savedCard.word,
     savedCard.phrase,
     savedCard.translation,
+    savedCard.patternTranslation,
+    savedCard.textOnly,
     savedCard.topic,
     savedCard.folderPath,
     savedCard.scene,
@@ -1224,15 +1247,21 @@ function setStudyMode(mode) {
 
 function renderStudyMode() {
   const card = currentCard();
-  const russian = state.studySettings.mode === "russian";
-  els.studyModeButtons.forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.studyMode === state.studySettings.mode)));
+  const russian = state.studySettings.mode === "russian" || Boolean(card?.textOnly);
+  els.studyModeButtons.forEach((button) => {
+    button.setAttribute("aria-pressed", String(button.dataset.studyMode === (russian ? "russian" : "picture")));
+    button.disabled = Boolean(card?.textOnly) && button.dataset.studyMode === "picture";
+  });
   els.flashcard.classList.toggle("is-russian-mode", russian);
+  els.flashcard.classList.toggle("is-text-only", Boolean(card?.textOnly));
   els.cardImage.hidden = russian;
   els.cardRussianPrompt.hidden = !russian;
   els.cardRussianPrompt.textContent = card
     ? String(card.translation || "").trim() || "У этой карточки пока нет русского перевода."
     : "Добавь карточку для тренировки.";
-  els.cardAnswerImage.hidden = !russian || !card?.imageUrl;
+  els.cardPattern.hidden = !card?.patternTranslation;
+  els.cardPattern.textContent = card?.patternTranslation ? `${card.word} — ${card.patternTranslation}` : "";
+  els.cardAnswerImage.hidden = !russian || card?.textOnly || !card?.imageUrl;
   setVisual(els.cardAnswerImage, russian ? card?.imageUrl : "");
   els.cardTranslation.hidden = russian;
   if (russian) els.cardMotion.hidden = true;
@@ -1245,7 +1274,7 @@ function updateCardFaceAccessibility() {
   els.cardFront.toggleAttribute("inert", state.flipped);
   els.cardBack.toggleAttribute("inert", !state.flipped);
   els.flashcard.setAttribute("aria-label", state.flipped
-    ? (state.studySettings.mode === "russian" ? "Показать русский текст" : "Показать картинку")
+    ? (state.studySettings.mode === "russian" || currentCard()?.textOnly ? "Показать русский текст" : "Показать картинку")
     : "Показать фразу на английском");
 }
 
@@ -1270,6 +1299,7 @@ function renderDeck() {
 
   deck.forEach((card, index) => {
     const item = els.deckItemTemplate.content.firstElementChild.cloneNode(true);
+    item.classList.toggle("is-text-only", card.textOnly);
     setVisual(item.querySelector(".deck-thumb"), card.imageUrl, "");
     item.querySelector("h3").textContent = card.phrase;
     item.querySelector("p").textContent = `${cardFolder(card)} · ${reviewLabel(card)} · ${card.word}`;
@@ -1928,6 +1958,7 @@ function englishTrainerWords(selection = "all") {
       ...normalizeEnglishTrainerWordEntry({
         id: `card-word:${key}`,
         word: key,
+        translation: card.patternTranslation || "",
         notes: [card.phrase, card.translation].filter(Boolean).join(" — "),
         createdAt: card.createdAt,
       }),

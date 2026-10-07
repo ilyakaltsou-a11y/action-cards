@@ -28,6 +28,18 @@ test("standalone Cloudflare build serves the canonical UI and shared API without
   const icons = await worker.fetch(new Request("https://cards.example/assets/icons.svg"), {});
   assert.equal(icons.status, 200);
   assert.equal(icons.headers.get("content-type"), "image/svg+xml");
+  const defaults = JSON.parse(fs.readFileSync(path.join(root, "public/default-cards.json"), "utf8"));
+  const questions = defaults.cards.filter((card) => card.id.startsWith("basic-question-"));
+  assert.equal(questions.length, 12);
+  assert.equal(questions.filter((card) => card.question).length, 8);
+  for (const card of questions) {
+    assert.equal(card.question, card.phrase.endsWith("?"));
+    assert.equal(card.textOnly, true);
+    assert.equal(card.imageUrl, "");
+    assert.ok(card.patternTranslation);
+  }
+  const seedResponse = await worker.fetch(new Request("https://cards.example/default-cards.json?v=68"), {});
+  assert.deepEqual(await seedResponse.json(), defaults);
   const status = await worker.fetch(new Request("https://cards.example/api/status"), {});
   assert.equal((await status.json()).aiReady, false);
   const invalid = await worker.fetch(new Request("https://cards.example/api/cards", { method: "PUT", body: "null" }), {});
