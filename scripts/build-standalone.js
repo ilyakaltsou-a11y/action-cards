@@ -52,7 +52,9 @@ for (const filePath of listFiles(path.join(publicDir, "assets"))) {
 }
 
 let workerSource = fs.readFileSync(workerSourcePath, "utf8");
-workerSource = workerSource.replace("return env.ASSETS.fetch(request);", "return serveStatic(url);");
+const assetDispatch = "return await env.ASSETS.fetch(request);";
+if (!workerSource.includes(assetDispatch)) throw new Error("Worker asset dispatch was not found");
+workerSource = workerSource.replace(assetDispatch, "return serveStatic(url);");
 
 output += `\n${workerSource}`;
 output += `\n\nfunction serveStatic(url) {\n`;

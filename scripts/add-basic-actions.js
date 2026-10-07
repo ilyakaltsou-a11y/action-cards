@@ -50,8 +50,9 @@ async function main() {
         if (!response.ok || !draft.imageUrl) throw new Error(`${id}: ${draft.error || response.status}`);
         await fs.writeFile(draftFile, JSON.stringify(draft));
       }
-      if (!draft.imageUrl.startsWith("assets/ai/")) throw new Error(`${id}: expected a saved local image`);
-      execFileSync("sips", ["-Z", "768", "-s", "format", "jpeg", "-s", "formatOptions", "65", path.join(root, draft.imageUrl), "--out", path.join(imageDir, `${id}.jpg`)], { stdio: "ignore" });
+      const imageName = /^(?:assets\/ai\/|\/images\/)([a-z0-9-]+\.png)$/.exec(draft.imageUrl)?.[1];
+      if (!imageName) throw new Error(`${id}: expected a saved local image`);
+      execFileSync("sips", ["-Z", "768", "-s", "format", "jpeg", "-s", "formatOptions", "65", path.join(root, "assets/ai", imageName), "--out", path.join(imageDir, `${id}.jpg`)], { stdio: "ignore" });
       results[index] = {
         ...card, id, topic: "daily", folderPath: source.folderPath,
         scene: draft.scene, imagePreference: "", imageUrl: `assets/basic-actions/${id}.jpg`,

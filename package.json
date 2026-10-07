@@ -4,6 +4,9 @@
   "private": true,
   "description": "AI flashcards for English practice with images, folders, song cards, and spaced review.",
   "type": "commonjs",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "start": "node server.js",
     "check": "node --check app.js && node --check public/app.js && node --check server.js && node --input-type=module --check < src/worker.js",

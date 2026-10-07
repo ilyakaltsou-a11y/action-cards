@@ -25,75 +25,76 @@ export default {
       }
 
       if (request.method === "POST" && url.pathname === "/api/create-card") {
-        return handleCreateCard(request, env);
+        return await handleCreateCard(request, env);
       }
 
       if (request.method === "POST" && url.pathname === "/api/create-song-cards") {
-        return handleCreateSongCards(request, env);
+        return await handleCreateSongCards(request, env);
       }
 
       if (request.method === "POST" && url.pathname === "/api/song-options") {
-        return handleSongOptions(request, env);
+        return await handleSongOptions(request, env);
       }
 
       if (request.method === "POST" && url.pathname === "/api/polish/suggest-words") {
-        return handlePolishSuggestWords(request, env);
+        return await handlePolishSuggestWords(request, env);
       }
 
       if (request.method === "POST" && url.pathname === "/api/english/sentence-trainer/suggest-words") {
-        return handleEnglishTrainerSuggestWords(request, env);
+        return await handleEnglishTrainerSuggestWords(request, env);
       }
 
       if (request.method === "POST" && url.pathname === "/api/english/sentence-trainer/extract-words") {
-        return handleEnglishTrainerExtractWords(request, env);
+        return await handleEnglishTrainerExtractWords(request, env);
       }
 
       if (request.method === "POST" && url.pathname === "/api/english/sentence-trainer/create-exercise") {
-        return handleEnglishTrainerCreateExercise(request, env);
+        return await handleEnglishTrainerCreateExercise(request, env);
       }
 
       if (request.method === "POST" && url.pathname === "/api/english/sentence-trainer/prepare-manual") {
-        return handleEnglishTrainerPrepareManual(request, env);
+        return await handleEnglishTrainerPrepareManual(request, env);
       }
 
       if (request.method === "POST" && url.pathname === "/api/english/sentence-trainer/check-answer") {
-        return handleEnglishTrainerCheckAnswer(request, env);
+        return await handleEnglishTrainerCheckAnswer(request, env);
       }
 
       if (request.method === "POST" && url.pathname === "/api/polish/extract-words") {
-        return handlePolishExtractWords(request, env);
+        return await handlePolishExtractWords(request, env);
       }
 
       if (request.method === "POST" && url.pathname === "/api/polish/create-exercise") {
-        return handlePolishCreateExercise(request, env);
+        return await handlePolishCreateExercise(request, env);
       }
 
       if (request.method === "POST" && url.pathname === "/api/polish/prepare-manual") {
-        return handlePolishPrepareManual(request, env);
+        return await handlePolishPrepareManual(request, env);
       }
 
       if (request.method === "POST" && url.pathname === "/api/polish/check-answer") {
-        return handlePolishCheckAnswer(request, env);
+        return await handlePolishCheckAnswer(request, env);
       }
 
       if (request.method === "GET" && url.pathname === "/api/cards") {
-        return handleGetCards(url, env);
+        return await handleGetCards(url, env);
       }
 
       if (request.method === "PUT" && url.pathname === "/api/cards") {
-        return handleSaveCards(request, env);
+        return await handleSaveCards(request, env);
       }
 
       if (request.method === "GET" && url.pathname.startsWith("/images/")) {
-        return handleImage(url, env);
+        return await handleImage(url, env);
       }
 
-      return env.ASSETS.fetch(request);
+      if (url.pathname.startsWith("/api/")) return json({ error: "API route not found" }, 404);
+      return await env.ASSETS.fetch(request);
     } catch (error) {
       const message = error.name === "TimeoutError" || error.name === "AbortError"
         ? "AI timeout"
         : error.message || "Server error";
-      return json({ error: message }, 500);
+      return json({ error: message }, error.status === 400 ? 400 : 500);
     }
   },
 };
@@ -106,6 +107,20 @@ function json(data, status = 200) {
       "Cache-Control": "no-store",
     },
   });
+}
+
+async function readJson(request) {
+  let body;
+  try {
+    body = await request.json();
+  } catch (error) {
+    if (error instanceof SyntaxError) throw Object.assign(new Error("Invalid JSON request"), { status: 400 });
+    throw error;
+  }
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    throw Object.assign(new Error("JSON object is required"), { status: 400 });
+  }
+  return body;
 }
 
 function cleanWord(word) {
@@ -1076,7 +1091,7 @@ async function handleCreateSongCards(request, env) {
     return json({ error: "OPENAI_API_KEY is not set" }, 503);
   }
 
-  const body = await request.json();
+  const body = await readJson(request);
   const songTitle = cleanTitle(body.songTitle);
   const lines = Array.isArray(body.lines) ? body.lines : [];
   const existingPhrases = Array.isArray(body.existingPhrases) ? body.existingPhrases : [];
@@ -1102,7 +1117,7 @@ async function handleCreateCard(request, env) {
     return json({ error: "OPENAI_API_KEY is not set" }, 503);
   }
 
-  const body = await request.json();
+  const body = await readJson(request);
   const word = cleanWord(body.word);
   if (!word) {
     return json({ error: "Word is required" }, 400);
@@ -1130,7 +1145,7 @@ async function handleSongOptions(request, env) {
     return json({ error: "DEEPSEEK_API_KEY is not set" }, 503);
   }
 
-  const body = await request.json();
+  const body = await readJson(request);
   const query = String(body.query || "").trim().replace(/\s+/g, " ").slice(0, 240);
   if (!query) {
     return json({ error: "Song query is required" }, 400);
@@ -1145,7 +1160,7 @@ async function handlePolishSuggestWords(request, env) {
     return json({ error: "DEEPSEEK_API_KEY is not set" }, 503);
   }
 
-  const body = await request.json();
+  const body = await readJson(request);
   const words = await suggestPolishWords(env, Array.isArray(body.existingWords) ? body.existingWords : [], body.count);
   return json({ words });
 }
@@ -1155,7 +1170,7 @@ async function handleEnglishTrainerSuggestWords(request, env) {
     return json({ error: "DEEPSEEK_API_KEY is not set" }, 503);
   }
 
-  const body = await request.json();
+  const body = await readJson(request);
   const words = await suggestEnglishTrainerWords(env, Array.isArray(body.existingWords) ? body.existingWords : [], body.count);
   return json({ words });
 }
@@ -1165,7 +1180,7 @@ async function handleEnglishTrainerExtractWords(request, env) {
     return json({ error: "DEEPSEEK_API_KEY is not set" }, 503);
   }
 
-  const body = await request.json();
+  const body = await readJson(request);
   const text = String(body.text || "").trim().slice(0, 1200);
   if (!text) {
     return json({ error: "Text is required" }, 400);
@@ -1179,7 +1194,7 @@ async function handleEnglishTrainerCreateExercise(request, env) {
     return json({ error: "DEEPSEEK_API_KEY is not set" }, 503);
   }
 
-  const body = await request.json();
+  const body = await readJson(request);
   const exercise = await createEnglishTrainerExercise(
     env,
     Array.isArray(body.words) ? body.words : [],
@@ -1198,7 +1213,7 @@ async function handleEnglishTrainerPrepareManual(request, env) {
     return json({ error: "DEEPSEEK_API_KEY is not set" }, 503);
   }
 
-  const body = await request.json();
+  const body = await readJson(request);
   const promptRu = String(body.promptRu || "").trim().replace(/\s+/g, " ").slice(0, 620);
   if (!promptRu) {
     return json({ error: "Prompt is required" }, 400);
@@ -1212,7 +1227,7 @@ async function handleEnglishTrainerCheckAnswer(request, env) {
     return json({ error: "DEEPSEEK_API_KEY is not set" }, 503);
   }
 
-  const body = await request.json();
+  const body = await readJson(request);
   const answer = String(body.answer || "").trim().replace(/\s+/g, " ").slice(0, 320);
   if (!answer) {
     return json({ error: "Answer is required" }, 400);
@@ -1226,7 +1241,7 @@ async function handlePolishExtractWords(request, env) {
     return json({ error: "DEEPSEEK_API_KEY is not set" }, 503);
   }
 
-  const body = await request.json();
+  const body = await readJson(request);
   const text = String(body.text || "").trim().slice(0, 1200);
   if (!text) {
     return json({ error: "Text is required" }, 400);
@@ -1240,7 +1255,7 @@ async function handlePolishCreateExercise(request, env) {
     return json({ error: "DEEPSEEK_API_KEY is not set" }, 503);
   }
 
-  const body = await request.json();
+  const body = await readJson(request);
   const exercise = await createPolishExercise(
     env,
     Array.isArray(body.words) ? body.words : [],
@@ -1257,7 +1272,7 @@ async function handlePolishPrepareManual(request, env) {
     return json({ error: "DEEPSEEK_API_KEY is not set" }, 503);
   }
 
-  const body = await request.json();
+  const body = await readJson(request);
   const promptRu = String(body.promptRu || "").trim().replace(/\s+/g, " ").slice(0, 620);
   if (!promptRu) {
     return json({ error: "Prompt is required" }, 400);
@@ -1271,7 +1286,7 @@ async function handlePolishCheckAnswer(request, env) {
     return json({ error: "DEEPSEEK_API_KEY is not set" }, 503);
   }
 
-  const body = await request.json();
+  const body = await readJson(request);
   const answer = String(body.answer || "").trim().replace(/\s+/g, " ").slice(0, 320);
   if (!answer) {
     return json({ error: "Answer is required" }, 400);
@@ -1306,7 +1321,7 @@ async function handleGetCards(url, env) {
 }
 
 async function handleSaveCards(request, env) {
-  const body = await request.json();
+  const body = await readJson(request);
   const profile = cleanProfile(body.profile);
   if (!profile) {
     return json({ error: "Profile is required" }, 400);

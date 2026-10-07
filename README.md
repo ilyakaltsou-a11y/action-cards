@@ -15,6 +15,8 @@ Action Cards is a browser-based English flashcard app. It helps learners study w
 
 ## Local Development
 
+Requires Node.js 20 or newer.
+
 1. Create a local env file from the example:
 
 ```sh
@@ -34,7 +36,21 @@ DEEPSEEK_API_KEY=...
 node server.js
 ```
 
-By default the app opens on `http://127.0.0.1:5177`. You can change the port in `.env`.
+By default the app opens on `http://127.0.0.1:5176`. You can change the port with `PORT` in `.env` (the example uses 5177).
+
+The local server listens only on this computer by default. Set `HOST=0.0.0.0` only when intentionally allowing access from your local network. Profiles are selected by code, not protected by a password.
+
+## Code Structure
+
+- `public/`: canonical browser interface, styles, starter cards, and assets.
+- `src/worker.js`: one API implementation for both Cloudflare and local development, including AI prompts.
+- `server.js`: Node HTTP adapter that starts the shared API locally.
+- `src/local/`: local environment loading, filesystem storage, and public asset serving.
+- `tests/`: UI regressions, shared API tests, and local HTTP/storage integration tests. Tests mock AI calls and do not spend API credits.
+
+Local profiles keep their existing `data/profiles/` format. Generated images remain in `assets/ai/`; both old image links and new `/images/` links work locally. Older digit-stripped profile filenames are read as a fallback, while future saves use the full profile code. Writes replace files atomically rather than overwriting them in place.
+
+Only `public/` and the generated-image directory are served to the browser, never the repository root or environment files. Root-level browser copies are retained for compatibility with existing workflows; edit `public/` first.
 
 ## Checks
 
