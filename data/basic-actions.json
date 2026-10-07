@@ -1,0 +1,25 @@
+{
+  "folderPath": "Стартовые / Действия с предметами",
+  "cards": [
+    { "word": "pick up", "phrase": "Pick up the phone.", "translation": "Подними / возьми телефон." },
+    { "word": "put down", "phrase": "Put the cup down on the table.", "translation": "Поставь чашку на стол." },
+    { "word": "move aside", "phrase": "Move the book aside.", "translation": "Отодвинь книгу в сторону." },
+    { "word": "move over", "phrase": "Move the box over here.", "translation": "Передвинь / переставь коробку сюда." },
+    { "word": "put in", "phrase": "Put the key in your pocket.", "translation": "Положи ключ в карман." },
+    { "word": "take out", "phrase": "Take the key out of your pocket.", "translation": "Достань ключ из кармана." },
+    { "word": "give", "phrase": "Give me the pen.", "translation": "Дай мне ручку." },
+    { "word": "lift up", "phrase": "Lift the box up.", "translation": "Подними коробку вверх." },
+    { "word": "lower", "phrase": "Lower the box slowly.", "translation": "Медленно опусти коробку." },
+    { "word": "tilt", "phrase": "Tilt the bottle slightly.", "translation": "Слегка наклони бутылку." },
+    { "word": "keep upright", "phrase": "Keep the bottle upright.", "translation": "Держи бутылку вертикально." },
+    { "word": "bring closer", "phrase": "Bring the phone closer.", "translation": "Поднеси телефон ближе." },
+    { "word": "move farther away", "phrase": "Move the phone farther away.", "translation": "Отодвинь / отнеси телефон подальше." },
+    { "word": "shake", "phrase": "Give the bottle a good shake.", "translation": "Хорошенько встряхни бутылку." },
+    { "word": "drop", "phrase": "Be careful! Don’t drop the glass.", "translation": "Осторожно! Не урони стакан." },
+    { "word": "carry", "phrase": "Carry the laptop carefully.", "translation": "Неси ноутбук осторожно." },
+    { "word": "set down", "phrase": "Set the plate down gently.", "translation": "Аккуратно поставь тарелку." },
+    { "word": "turn around", "phrase": "Turn the phone around.", "translation": "Разверни телефон." },
+    { "word": "turn upside down", "phrase": "Turn the cup upside down.", "translation": "Переверни чашку вверх дном." },
+    { "word": "leave", "phrase": "Leave the keys there.", "translation": "Оставь ключи там." }
+  ]
+}

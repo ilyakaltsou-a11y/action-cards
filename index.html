@@ -7,11 +7,11 @@
     <title>Карточки действий</title>
     <script>
       if (window.location.protocol === "file:") {
-        window.location.replace(`http://127.0.0.1:5176/${window.location.search || "?v=52"}`);
+        window.location.replace(`http://127.0.0.1:5176/${window.location.search || "?v=65"}`);
       }
     </script>
     <link rel="manifest" href="manifest.webmanifest" />
-    <link rel="stylesheet" href="styles.css?v=52" />
+    <link rel="stylesheet" href="styles.css?v=65" />
   </head>
   <body>
     <div class="app-shell">
@@ -35,23 +35,42 @@
       </nav>
 
       <main class="app-grid english-view" id="englishView">
-        <section class="study-card panel" aria-label="Тренировка карточек">
+        <nav class="practice-tabs" aria-label="Способ изучения английского">
+          <button type="button" id="englishCardsTab" class="is-active" aria-pressed="true">Карточки</button>
+          <button type="button" id="englishSentencesTab" aria-pressed="false">Предложения</button>
+        </nav>
+        <section class="study-card" id="englishCardsPractice" aria-label="Тренировка карточек">
           <div class="panel-head">
             <div>
               <p class="section-kicker">Тренировка</p>
-              <h2 id="studyTitle">Пока нет карточек</h2>
+              <h2 id="studyTitle">Карточки</h2>
             </div>
-            <span class="pill" id="reviewStatus">0 карточек</span>
+            <span class="pill" id="reviewStatus"></span>
+          </div>
+          <button type="button" class="study-folder-button" id="openStudyFoldersButton">
+            <svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#folder"></use></svg>
+            <span id="studyFolderLabel">Все папки</span>
+            <svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#chevron-down"></use></svg>
+          </button>
+          <button type="button" class="basic-actions-button" id="startBasicActionsButton">Базовые действия</button>
+          <div class="study-mode-switch" role="group" aria-label="Режим карточек">
+            <button type="button" data-study-mode="picture" aria-pressed="true">По картинке</button>
+            <button type="button" data-study-mode="russian" aria-pressed="false">По русскому тексту</button>
           </div>
 
-          <button class="flashcard" id="flashcard" type="button" aria-label="Перевернуть карточку">
-            <span class="flashcard-face flashcard-front">
+          <div class="flashcard" id="flashcard" role="button" tabindex="0" aria-label="Перевернуть карточку">
+            <span class="flashcard-face flashcard-front" id="cardFront">
               <span class="empty-visual" id="cardImage">
                 <span>Создай первую карточку</span>
               </span>
+              <span class="motion-guide" id="cardMotion" hidden>
+                <svg aria-hidden="true"><use id="cardMotionIcon" href="assets/icons.svg#arrow-down"></use></svg>
+              </span>
+              <span class="phrase russian-prompt" id="cardRussianPrompt" lang="ru" hidden></span>
             </span>
-            <span class="flashcard-face flashcard-back">
-              <span class="phrase" id="cardPhrase">No cards yet</span>
+            <span class="flashcard-face flashcard-back" id="cardBack" aria-hidden="true" inert>
+              <span class="phrase" id="cardPhrase" lang="en">No cards yet</span>
+              <span class="card-answer-image" id="cardAnswerImage" role="img" aria-label="Иллюстрация к фразе" hidden></span>
               <span class="translation-chip is-hidden" id="cardTranslation" role="button" tabindex="0">
                 <span class="translation-label">Перевод по нажатию</span>
                 <span class="translation-text"></span>
@@ -60,11 +79,10 @@
                 <span class="listen-hint" id="speechStatus">Озвучка браузером</span>
                 <button class="listen-button" id="listenCardButton" type="button" aria-label="Прослушать фразу">▶</button>
               </span>
-              <span class="small-note">Нажми на карточку, чтобы перевернуть. Свайп влево — не знаю, вправо — знаю.</span>
             </span>
             <span class="swipe-cue swipe-cue-left">Не знаю</span>
             <span class="swipe-cue swipe-cue-right">Знаю</span>
-          </button>
+          </div>
 
           <div class="memory-controls" aria-label="Оценка свайпом">
             <button class="danger-button" id="againButton" type="button" hidden>Не помню</button>
@@ -74,15 +92,31 @@
           </div>
 
         </section>
+        <nav class="workspace-actions" aria-label="Действия с английскими карточками">
+          <button type="button" id="openCreatorButton" title="Создать карточку из слова или своей фразы">
+            <svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#plus"></use></svg><span>Добавить слово</span>
+          </button>
+          <button type="button" id="openSongButton" title="Создать карточки по песне">
+            <svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#music"></use></svg><span>По песне</span>
+          </button>
+          <button type="button" id="openDeckButton" title="Папки и сохранённые карточки">
+            <svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#layers"></use></svg><span>Мои карточки</span>
+          </button>
+          <button type="button" id="openEnglishTrainerDictionaryButton" title="Мои английские слова и фразы">
+            <svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#book-open"></use></svg><span>Словарь</span>
+          </button>
+        </nav>
 
-        <section class="creator panel" aria-label="Создание карточки">
+        <dialog class="deck-dialog" id="cardCreatorDialog">
+        <section class="creator deck-dialog-panel" aria-label="Создание карточки">
           <div class="panel-head">
             <div>
               <p class="section-kicker">Создание</p>
-              <h2 id="creatorTitle">Новое слово</h2>
+              <h2 id="creatorTitle">Новая карточка</h2>
             </div>
-            <span class="status-dot" id="aiStatusDot">AI</span>
+            <button class="icon-button" id="closeCreatorButton" type="button" aria-label="Закрыть создание карточки">×</button>
           </div>
+          <span class="status-dot" id="aiStatusDot">AI</span>
 
           <form class="creator-form" id="creatorForm">
             <div class="mode-switch" aria-label="Способ создания фразы">
@@ -97,10 +131,10 @@
             </div>
 
             <label class="word-field">
-              <span>Введи слово на английском</span>
+              <span>Слово или выражение на английском</span>
               <input id="wordInput" type="text" autocomplete="off" inputmode="text" aria-describedby="wordHelp" />
             </label>
-            <p class="field-help" id="wordHelp">Например: eat, carry, open. Подсказки не вставляются в поле заранее.</p>
+            <p class="field-help" id="wordHelp">Например: carry или pick up.</p>
 
             <label class="word-field manual-phrase-field" id="manualPhraseField" hidden>
               <span>Моя фраза на английском</span>
@@ -112,10 +146,9 @@
                 id="imagePreferenceInput"
                 rows="3"
                 autocomplete="off"
-                placeholder="Например: warehouse, evening, realistic truck, clear loading process"
+                placeholder=""
               ></textarea>
             </label>
-            <p class="field-help">Это не прямой prompt. AI учтет пожелания, но сам соберет безопасный запрос для картинки.</p>
             <button class="main-button generate-button" id="generateButton" type="submit">Создать карточку с AI</button>
             <button class="soft-button cancel-edit-button" id="cancelEditButton" type="button" hidden>Отменить редактирование</button>
           </form>
@@ -133,7 +166,7 @@
                 <button class="listen-button" id="listenDraftButton" type="button" aria-label="Прослушать новую фразу">▶</button>
               </div>
               <p class="draft-translation" id="draftTranslation"></p>
-              <p id="draftScene"></p>
+              <p id="draftScene" hidden></p>
             </div>
             <div class="draft-actions">
               <button class="soft-button" id="regenerateButton" type="button">Другой вариант</button>
@@ -141,43 +174,58 @@
             </div>
           </article>
         </section>
+        </dialog>
 
-        <section class="song panel" aria-label="Создание карточек по песне">
+        <section class="polish-panel polish-trainer" id="englishSentencesPractice" aria-label="Тренировка английского" hidden>
           <div class="panel-head">
             <div>
-              <p class="section-kicker">Песни</p>
-              <h2>Карточки по песне</h2>
+              <p class="section-kicker">Тренировка</p>
+              <h2>Переведи на английский</h2>
             </div>
           </div>
-          <button class="main-button" id="openSongButton" type="button">Создать карточки по песне</button>
-          <button class="soft-link-button" id="songSearchButton" type="button">Найти песню с AI</button>
-          <p class="field-help">Вставь свои строки песни или дай AI определить песню по примерному названию. Без вывода полного текста песни.</p>
-        </section>
-
-        <section class="deck panel" aria-label="Колода">
-          <div class="panel-head">
-            <div>
-              <p class="section-kicker">Колода</p>
-              <h2>Мои карточки</h2>
-            </div>
-            <button class="text-button" id="openDeckButton" type="button">Список</button>
-          </div>
-          <div class="folder-box">
-            <div class="folder-box-head">
-              <h3>Папки</h3>
-              <span id="folderSummary">Все папки</span>
-            </div>
-            <div class="folder-tree" id="folderTree" role="tree" aria-label="Дерево папок"></div>
-            <label>
-              <span>Создать папку</span>
-              <input id="folderNameInput" type="text" autocomplete="off" placeholder="Например: Песни / Dead Poet Society" />
+          <div class="polish-controls">
+            <label class="trainer-folder-control">
+              <span>Папка для предложений</span>
+              <select id="englishTrainerFolderSelect">
+                <option value="all">Все карточки и слова</option>
+              </select>
             </label>
-            <button class="soft-button" id="createFolderButton" type="button">Добавить папку</button>
+            <label>
+              <span>Сколько слов использовать</span>
+              <select id="englishTrainerExerciseCount">
+                <option value="5">5 слов</option>
+                <option value="10" selected>10 слов</option>
+                <option value="20">20 слов</option>
+              </select>
+            </label>
+            <label>
+              <span>Режим</span>
+              <select id="englishTrainerExerciseMode">
+                <option value="easy">Лёгкий: A1-A2</option>
+                <option value="medium" selected>Средний: A2-B1</option>
+                <option value="hard">Сложный: B1</option>
+              </select>
+            </label>
           </div>
-          <button class="deck-summary-button" id="openDeckSummaryButton" type="button">
-            <span>Открыть карточки</span>
-            <strong id="deckSummary">0 карточек</strong>
-          </button>
+          <div class="polish-task-actions">
+            <button class="main-button" id="createEnglishTrainerExerciseButton" type="button">Новое задание</button>
+            <button class="soft-button" id="openEnglishTrainerTextButton" type="button">Написать свой текст</button>
+          </div>
+
+          <article class="polish-exercise-card" id="englishTrainerExerciseCard" hidden>
+            <p class="section-kicker">Переведи на английский</p>
+            <h3 id="englishTrainerPromptRu"></h3>
+            <p class="field-help" id="englishTrainerExerciseHint"></p>
+            <div class="polish-used-words" id="englishTrainerUsedWords"></div>
+            <label class="word-field">
+              <span>Мой ответ по-английски</span>
+              <textarea id="englishTrainerAnswerInput" rows="4" autocomplete="off" placeholder="Напиши английское предложение здесь"></textarea>
+            </label>
+            <button class="success-button" id="checkEnglishTrainerAnswerButton" type="button">Проверить ответ</button>
+          </article>
+
+          <article class="polish-feedback" id="englishTrainerFeedback" hidden></article>
+          <div class="status-box" id="englishTrainerStatus" role="status">Выбери слова в словаре или напиши свой текст.</div>
         </section>
       </main>
 
@@ -197,17 +245,15 @@
               <p class="section-kicker">База слов</p>
               <h2>Мои польские слова</h2>
             </div>
-            <span class="pill" id="polishWordCount">0 слов/фраз</span>
           </div>
           <label class="word-field">
-              <span>Добавь слова, фразы или польский текст</span>
-              <textarea id="polishWordsInput" rows="5" autocomplete="off" placeholder="dom - дом&#10;w sumie — в общем-то&#10;szczerze mówiąc — честно говоря&#10;ogólnie rzecz biorąc — в целом&#10;Robię pracę domową z dzieckiem."></textarea>
+              <span>Добавь слова или фразы</span>
+              <textarea id="polishWordsInput" rows="3" autocomplete="off" placeholder="dom - дом"></textarea>
           </label>
           <div class="polish-actions">
             <button class="main-button" id="addPolishWordsButton" type="button">Добавить мои слова</button>
             <button class="soft-button" id="suggestPolishWordsButton" type="button">AI предложит 10 слов</button>
           </div>
-          <p class="field-help">Можно вставить список слов, устойчивые выражения или польский текст. AI сохранит выражения целиком, если они работают как одна фраза.</p>
           <button class="polish-dictionary-button" id="openPolishDictionaryButton" type="button">
             <span>Словарь</span>
             <strong id="polishDictionarySummary">0 слов · Открыть</strong>
@@ -240,7 +286,10 @@
               </select>
             </label>
           </div>
-          <button class="main-button" id="createPolishExerciseButton" type="button">Создать задание</button>
+          <div class="polish-task-actions">
+            <button class="main-button" id="createPolishExerciseButton" type="button">Создать задание</button>
+            <button class="soft-button" id="openPolishTextButton" type="button">Написать свой текст</button>
+          </div>
 
           <article class="polish-exercise-card" id="polishExerciseCard" hidden>
             <p class="section-kicker">Переведи на польский</p>
@@ -269,6 +318,15 @@
           </div>
           <button class="icon-button" id="closeDeckButton" type="button" aria-label="Закрыть список">×</button>
         </div>
+        <details class="deck-folders" open>
+          <summary><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#folder"></use></svg>Папки <span id="folderSummary">Все папки</span></summary>
+          <div class="folder-tree" id="folderTree" role="tree" aria-label="Дерево папок"></div>
+          <div class="folder-create-controls">
+            <input id="folderNameInput" type="text" autocomplete="off" aria-label="Название новой папки" placeholder="Новая папка" />
+            <button class="icon-button" id="createFolderButton" type="button" aria-label="Добавить папку" title="Добавить папку"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#plus"></use></svg></button>
+          </div>
+        </details>
+        <p class="field-help" id="deckSummary">0 карточек</p>
         <div class="dialog-actions">
           <button class="text-button" id="selectCardsButton" type="button">Выбрать</button>
           <button class="text-button" id="clearButton" type="button">Очистить</button>
@@ -286,6 +344,69 @@
           </div>
         </div>
         <div class="deck-list" id="deckList"></div>
+      </section>
+    </dialog>
+
+    <dialog class="deck-dialog" id="englishTrainerDictionaryDialog">
+      <section class="deck-dialog-panel polish-dictionary-panel" aria-label="Английский словарь">
+        <div class="dialog-head">
+          <div>
+            <p class="section-kicker">English</p>
+            <h2>Мои английские слова</h2>
+            <span class="field-help" id="englishTrainerDictionarySummary">0 слов/фраз</span>
+          </div>
+          <button class="icon-button" id="closeEnglishTrainerDictionaryButton" type="button" aria-label="Закрыть английский словарь">×</button>
+        </div>
+        <details class="dictionary-add-words">
+          <summary><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#plus"></use></svg>Добавить слова</summary>
+          <label class="word-field">
+            <span>Слова, выражения или английский текст</span>
+            <textarea id="englishTrainerWordsInput" rows="2" autocomplete="off" placeholder=""></textarea>
+          </label>
+          <div class="polish-actions">
+            <button class="main-button" id="addEnglishTrainerWordsButton" type="button">Добавить</button>
+            <button class="soft-button" id="suggestEnglishTrainerWordsButton" type="button">Предложить 10 слов</button>
+          </div>
+          <p class="dictionary-status" id="englishTrainerDictionaryStatus" role="status"></p>
+        </details>
+        <small id="englishTrainerDictionaryPreview" hidden></small>
+        <div class="polish-dictionary-tools">
+          <label>
+            <span>Поиск</span>
+            <input id="englishTrainerDictionarySearch" type="search" autocomplete="off" placeholder="answer, work, отвечать" />
+          </label>
+          <label>
+            <span>Тип</span>
+            <select id="englishTrainerDictionaryFilter">
+              <option value="all">Все слова и фразы</option>
+              <option value="verb">Глаголы</option>
+              <option value="noun">Существительные</option>
+              <option value="phrase">Фразы</option>
+              <option value="adjective">Прилагательные</option>
+              <option value="other">Слова</option>
+            </select>
+          </label>
+        </div>
+        <p class="field-help" id="englishTrainerDictionaryCount">0 слов/фраз</p>
+        <div class="polish-dictionary-list" id="englishTrainerDictionaryList"></div>
+      </section>
+    </dialog>
+
+    <dialog class="deck-dialog" id="englishTrainerTextDialog">
+      <section class="deck-dialog-panel polish-text-panel" aria-label="Свое английское задание">
+        <div class="dialog-head">
+          <div>
+            <p class="section-kicker">English</p>
+            <h2>Свой текст</h2>
+          </div>
+          <button class="icon-button" id="closeEnglishTrainerTextButton" type="button" aria-label="Закрыть свой английский текст">×</button>
+        </div>
+        <label class="word-field">
+          <span>Русский текст для перевода</span>
+          <textarea id="englishTrainerManualPromptInput" rows="4" autocomplete="off" placeholder="Например: Я отвечу работодателю после обеда."></textarea>
+        </label>
+        <button class="main-button" id="startEnglishTrainerManualPromptButton" type="button">Сделать заданием</button>
+        <p class="field-help">Напиши фразу на русском, переведи ее сам на английский, а AI проверит грамматику и предложит естественный вариант.</p>
       </section>
     </dialog>
 
@@ -317,6 +438,24 @@
         </div>
         <p class="field-help" id="polishDictionaryCount">0 слов/фраз</p>
         <div class="polish-dictionary-list" id="polishDictionaryList"></div>
+      </section>
+    </dialog>
+
+    <dialog class="deck-dialog" id="polishTextDialog">
+      <section class="deck-dialog-panel polish-text-panel" aria-label="Свое польское задание">
+        <div class="dialog-head">
+          <div>
+            <p class="section-kicker">Polski</p>
+            <h2>Свой текст</h2>
+          </div>
+          <button class="icon-button" id="closePolishTextButton" type="button" aria-label="Закрыть свой текст">×</button>
+        </div>
+        <label class="word-field">
+          <span>Русский текст для перевода</span>
+          <textarea id="polishManualPromptInput" rows="4" autocomplete="off" placeholder="Например: Я сегодня отвечу работодателю после обеда."></textarea>
+        </label>
+        <button class="main-button" id="startPolishManualPromptButton" type="button">Сделать заданием</button>
+        <p class="field-help">Напиши фразу на русском, переведи ее сам на польский, а AI проверит грамматику и предложит правильный вариант.</p>
       </section>
     </dialog>
 
@@ -458,6 +597,6 @@
       </article>
     </template>
 
-    <script src="app.js?v=52"></script>
+    <script src="app.js?v=65"></script>
   </body>
 </html>

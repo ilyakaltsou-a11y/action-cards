@@ -5,7 +5,34 @@ const FOLDER_KEY = "action-cards:folder:v1";
 const ACTIVITY_KEY = "action-cards:activity:v1";
 const LANGUAGE_KEY = "action-cards:language:v1";
 const POLISH_KEY = "action-cards:polish:v1";
-const DEFAULT_CARDS_URL = "default-cards.json?v=52";
+const ENGLISH_TRAINER_KEY = "action-cards:english-trainer:v1";
+const STUDY_SETTINGS_KEY = "action-cards:study-settings:v1";
+const DEFAULT_CARDS_URL = "default-cards.json?v=65";
+const STARTER_PACKS_KEY = "action-cards:starter-packs:v1";
+const BASIC_ACTIONS_PACK = "basic-actions-v1";
+const BASIC_ACTIONS_FOLDER = "Стартовые / Действия с предметами";
+const BASIC_ACTION_MOTIONS = new Map([
+  ["Pick up the phone.", "arrow-up"],
+  ["Put the cup down on the table.", "arrow-down"],
+  ["Move the book aside.", "arrow-right"],
+  ["Move the box over here.", "arrow-down-left"],
+  ["Put the key in your pocket.", "arrow-down-to-line"],
+  ["Take the key out of your pocket.", "arrow-up-from-line"],
+  ["Give me the pen.", "arrow-left"],
+  ["Lift the box up.", "arrow-up"],
+  ["Lower the box slowly.", "arrow-down"],
+  ["Tilt the bottle slightly.", "rotate-cw"],
+  ["Keep the bottle upright.", "arrow-up"],
+  ["Bring the phone closer.", "arrow-down-left"],
+  ["Move the phone farther away.", "arrow-up-right"],
+  ["Give the bottle a good shake.", "move-horizontal"],
+  ["Be careful! Don’t drop the glass.", "circle-slash"],
+  ["Carry the laptop carefully.", "arrow-right"],
+  ["Set the plate down gently.", "arrow-down"],
+  ["Turn the phone around.", "rotate-cw"],
+  ["Turn the cup upside down.", "rotate-cw"],
+  ["Leave the keys there.", "pause"],
+].map(([phrase, icon]) => [songPhraseKey(phrase), icon]));
 const SONG_ROOT_FOLDER = "Только песни";
 const AGAIN_REVIEW_DELAY = 45 * 1000;
 const CREATE_CARD_TIMEOUT = 140 * 1000;
@@ -40,15 +67,19 @@ const REVIEW_INTERVALS = [
 ];
 
 const state = {
+  profileSyncReady: false,
   cards: [],
+  starterPacks: [],
   folders: [],
   currentIndex: 0,
   flipped: false,
+  studySettings: { mode: "picture", updatedAt: 0 },
   draft: null,
   aiOnline: false,
   deepSeekOnline: false,
   aiStatusMessage: "Проверяю AI...",
   language: "english",
+  englishPractice: "cards",
   installPrompt: null,
   profileId: "",
   activeFolder: "all",
@@ -59,11 +90,14 @@ const state = {
   selectionMode: false,
   selectedCardIds: new Set(),
   editingCardId: "",
+  englishTrainer: { words: [], exercises: [], currentExercise: null, feedback: null },
+  englishTrainerHintVisible: false,
+  englishTrainerUsedWordsVisible: false,
   polish: { words: [], exercises: [], currentExercise: null, feedback: null },
   polishHintVisible: false,
+  polishUsedWordsVisible: false,
   polishPrefetching: false,
   drag: null,
-  dragResetTimer: 0,
   ignoreFlipUntil: 0,
 };
 
@@ -72,7 +106,24 @@ const els = {
   creatorTitle: document.querySelector("#creatorTitle"),
   reviewStatus: document.querySelector("#reviewStatus"),
   flashcard: document.querySelector("#flashcard"),
+  studyModeButtons: document.querySelectorAll("[data-study-mode]"),
+  cardFront: document.querySelector("#cardFront"),
+  cardBack: document.querySelector("#cardBack"),
+  cardRussianPrompt: document.querySelector("#cardRussianPrompt"),
+  cardAnswerImage: document.querySelector("#cardAnswerImage"),
   cardImage: document.querySelector("#cardImage"),
+  cardMotion: document.querySelector("#cardMotion"),
+  cardMotionIcon: document.querySelector("#cardMotionIcon"),
+  cardCreatorDialog: document.querySelector("#cardCreatorDialog"),
+  openCreatorButton: document.querySelector("#openCreatorButton"),
+  closeCreatorButton: document.querySelector("#closeCreatorButton"),
+  englishCardsTab: document.querySelector("#englishCardsTab"),
+  englishSentencesTab: document.querySelector("#englishSentencesTab"),
+  englishCardsPractice: document.querySelector("#englishCardsPractice"),
+  englishSentencesPractice: document.querySelector("#englishSentencesPractice"),
+  openStudyFoldersButton: document.querySelector("#openStudyFoldersButton"),
+  studyFolderLabel: document.querySelector("#studyFolderLabel"),
+  startBasicActionsButton: document.querySelector("#startBasicActionsButton"),
   cardPhrase: document.querySelector("#cardPhrase"),
   cardTranslation: document.querySelector("#cardTranslation"),
   speechStatus: document.querySelector("#speechStatus"),
@@ -118,7 +169,6 @@ const els = {
   moveSelectedCardsButton: document.querySelector("#moveSelectedCardsButton"),
   deleteSelectedCardsButton: document.querySelector("#deleteSelectedCardsButton"),
   openDeckButton: document.querySelector("#openDeckButton"),
-  openDeckSummaryButton: document.querySelector("#openDeckSummaryButton"),
   closeDeckButton: document.querySelector("#closeDeckButton"),
   deckDialog: document.querySelector("#deckDialog"),
   deckSummary: document.querySelector("#deckSummary"),
@@ -127,7 +177,6 @@ const els = {
   folderNameInput: document.querySelector("#folderNameInput"),
   createFolderButton: document.querySelector("#createFolderButton"),
   openSongButton: document.querySelector("#openSongButton"),
-  songSearchButton: document.querySelector("#songSearchButton"),
   closeSongButton: document.querySelector("#closeSongButton"),
   songDialog: document.querySelector("#songDialog"),
   songForm: document.querySelector("#songForm"),
@@ -157,9 +206,43 @@ const els = {
   englishModeButton: document.querySelector("#englishModeButton"),
   polishModeButton: document.querySelector("#polishModeButton"),
   englishView: document.querySelector("#englishView"),
+  englishTrainerWordsInput: document.querySelector("#englishTrainerWordsInput"),
+  addEnglishTrainerWordsButton: document.querySelector("#addEnglishTrainerWordsButton"),
+  suggestEnglishTrainerWordsButton: document.querySelector("#suggestEnglishTrainerWordsButton"),
+  openEnglishTrainerDictionaryButton: document.querySelector("#openEnglishTrainerDictionaryButton"),
+  englishTrainerDictionarySummary: document.querySelector("#englishTrainerDictionarySummary"),
+  englishTrainerDictionaryStatus: document.querySelector("#englishTrainerDictionaryStatus"),
+  englishTrainerDictionaryPreview: document.querySelector("#englishTrainerDictionaryPreview"),
+  englishTrainerDictionaryDialog: document.querySelector("#englishTrainerDictionaryDialog"),
+  closeEnglishTrainerDictionaryButton: document.querySelector("#closeEnglishTrainerDictionaryButton"),
+  englishTrainerDictionarySearch: document.querySelector("#englishTrainerDictionarySearch"),
+  englishTrainerDictionaryFilter: document.querySelector("#englishTrainerDictionaryFilter"),
+  englishTrainerDictionaryCount: document.querySelector("#englishTrainerDictionaryCount"),
+  englishTrainerDictionaryList: document.querySelector("#englishTrainerDictionaryList"),
+  englishTrainerExerciseCount: document.querySelector("#englishTrainerExerciseCount"),
+  englishTrainerExerciseMode: document.querySelector("#englishTrainerExerciseMode"),
+  englishTrainerFolderSelect: document.querySelector("#englishTrainerFolderSelect"),
+  createEnglishTrainerExerciseButton: document.querySelector("#createEnglishTrainerExerciseButton"),
+  openEnglishTrainerTextButton: document.querySelector("#openEnglishTrainerTextButton"),
+  englishTrainerTextDialog: document.querySelector("#englishTrainerTextDialog"),
+  closeEnglishTrainerTextButton: document.querySelector("#closeEnglishTrainerTextButton"),
+  englishTrainerManualPromptInput: document.querySelector("#englishTrainerManualPromptInput"),
+  startEnglishTrainerManualPromptButton: document.querySelector("#startEnglishTrainerManualPromptButton"),
+  englishTrainerExerciseCard: document.querySelector("#englishTrainerExerciseCard"),
+  englishTrainerPromptRu: document.querySelector("#englishTrainerPromptRu"),
+  englishTrainerExerciseHint: document.querySelector("#englishTrainerExerciseHint"),
+  englishTrainerUsedWords: document.querySelector("#englishTrainerUsedWords"),
+  englishTrainerAnswerInput: document.querySelector("#englishTrainerAnswerInput"),
+  checkEnglishTrainerAnswerButton: document.querySelector("#checkEnglishTrainerAnswerButton"),
+  englishTrainerFeedback: document.querySelector("#englishTrainerFeedback"),
+  englishTrainerStatus: document.querySelector("#englishTrainerStatus"),
   polishView: document.querySelector("#polishView"),
   polishAiStatus: document.querySelector("#polishAiStatus"),
-  polishWordCount: document.querySelector("#polishWordCount"),
+  openPolishTextButton: document.querySelector("#openPolishTextButton"),
+  polishTextDialog: document.querySelector("#polishTextDialog"),
+  closePolishTextButton: document.querySelector("#closePolishTextButton"),
+  polishManualPromptInput: document.querySelector("#polishManualPromptInput"),
+  startPolishManualPromptButton: document.querySelector("#startPolishManualPromptButton"),
   polishWordsInput: document.querySelector("#polishWordsInput"),
   addPolishWordsButton: document.querySelector("#addPolishWordsButton"),
   suggestPolishWordsButton: document.querySelector("#suggestPolishWordsButton"),
@@ -210,6 +293,27 @@ function polishWordKey(word) {
   return normalizePolishWord(word)
     .normalize("NFD")
     .replace(/\p{Diacritic}/gu, "");
+}
+
+function normalizeSearchText(value, maxLength = 260) {
+  return normalizeFreeText(value, maxLength)
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "");
+}
+
+function inferPolishPartOfSpeech(word = "", explicitPart = "") {
+  const part = normalizeFreeText(explicitPart, 40).toLowerCase();
+  if (part.includes("verb") || part.includes("глаг") || part.includes("czasownik")) return "verb";
+  if (part.includes("noun") || part.includes("существ") || part.includes("rzeczownik")) return "noun";
+  if (part.includes("phrase") || part.includes("фраз") || part.includes("wyraż")) return "phrase";
+  if (part.includes("adj") || part.includes("прилаг") || part.includes("przymiotnik")) return "adjective";
+  const cleanWord = normalizePolishWord(word);
+  if (cleanWord.includes(" ")) return "phrase";
+  const key = polishWordKey(cleanWord);
+  if (/ć(?: się)?$/.test(cleanWord) || ["moc"].includes(key)) return "verb";
+  if (/a$|ość$|ść$|ek$|ik$|ka$|ko$|nia$|nie$/.test(cleanWord) || /^[a-ząćęłńóśźż]+[bcćdfghjklłmnńprsśtwzźż]$/.test(cleanWord)) return "noun";
+  return "";
 }
 
 function normalizeFolderPath(value) {
@@ -369,6 +473,17 @@ function getLocalPolishKey() {
   return `${POLISH_KEY}:${state.profileId}`;
 }
 
+function getLocalEnglishTrainerKey() {
+  return `${ENGLISH_TRAINER_KEY}:${state.profileId}`;
+}
+
+function normalizeStudySettings(settings = {}) {
+  return {
+    mode: settings?.mode === "russian" ? "russian" : "picture",
+    updatedAt: Number.isFinite(settings?.updatedAt) ? Math.max(0, settings.updatedAt) : 0,
+  };
+}
+
 function readCookie(name) {
   return document.cookie
     .split(";")
@@ -427,17 +542,22 @@ function initProfile() {
 }
 
 function loadLocalCards() {
+  state.studySettings = normalizeStudySettings();
   try {
+    state.studySettings = normalizeStudySettings(JSON.parse(localStorage.getItem(`${STUDY_SETTINGS_KEY}:${state.profileId}`) || "{}"));
+    state.starterPacks = normalizeStarterPacks(JSON.parse(localStorage.getItem(`${STARTER_PACKS_KEY}:${state.profileId}`) || "[]"));
     const savedCards = JSON.parse(localStorage.getItem(getLocalCardsKey())) || [];
     state.cards = savedCards.map(hydrateCard);
     const savedFolders = JSON.parse(localStorage.getItem(getLocalFoldersKey())) || [];
     state.folders = Array.isArray(savedFolders) ? savedFolders.map(normalizeFolderPath).filter(Boolean) : [];
     state.activity = normalizeActivity(JSON.parse(localStorage.getItem(getLocalActivityKey()) || "{}"));
+    state.englishTrainer = normalizeEnglishTrainerState(JSON.parse(localStorage.getItem(getLocalEnglishTrainerKey()) || "{}"));
     state.polish = normalizePolishState(JSON.parse(localStorage.getItem(getLocalPolishKey()) || "{}"));
   } catch {
     state.cards = [];
     state.folders = [];
     state.activity = normalizeActivity();
+    state.englishTrainer = normalizeEnglishTrainerState();
     state.polish = normalizePolishState();
   }
 }
@@ -449,30 +569,37 @@ async function loadServerCards() {
   if (Array.isArray(data.cards)) {
     const localCards = [...state.cards];
     const serverCards = data.cards.map(hydrateCard);
+    const serverStudySettings = normalizeStudySettings(data.studySettings);
+    const localStudySettings = normalizeStudySettings(state.studySettings);
+    state.studySettings = localStudySettings.updatedAt > serverStudySettings.updatedAt ? localStudySettings : serverStudySettings;
     state.cards = mergeCards(serverCards, localCards);
+    state.starterPacks = normalizeStarterPacks([...state.starterPacks, ...normalizeStarterPacks(data.starterPacks)]);
     if (Array.isArray(data.folders)) {
       mergeFolders(data.folders);
     }
     const localActivity = normalizeActivity(state.activity);
     const serverActivity = normalizeActivity(data.activity);
     state.activity = mergeActivity(serverActivity, localActivity);
+    const localEnglishTrainer = normalizeEnglishTrainerState(state.englishTrainer);
+    const serverEnglishTrainer = normalizeEnglishTrainerState(data.englishTrainer);
+    state.englishTrainer = mergeEnglishTrainerState(serverEnglishTrainer, localEnglishTrainer);
     const localPolish = normalizePolishState(state.polish);
     const serverPolish = normalizePolishState(data.polish);
     state.polish = mergePolishState(serverPolish, localPolish);
-    if (!state.cards.length) {
-      state.cards = await loadStarterCards();
-    }
-    localStorage.setItem(getLocalCardsKey(), JSON.stringify(state.cards));
-    localStorage.setItem(getLocalFoldersKey(), JSON.stringify(getAllFolders()));
-    localStorage.setItem(getLocalActivityKey(), JSON.stringify(state.activity));
-    localStorage.setItem(getLocalPolishKey(), JSON.stringify(state.polish));
+    await ensureStarterCards();
+    persistCardsLocally();
+    state.profileSyncReady = true;
     renderStudy(0);
+    renderEnglishTrainer();
     renderPolish();
     syncGoalDialog();
     if (
       !cardsHaveSameSyncState(state.cards, serverCards) ||
+      JSON.stringify(state.studySettings) !== JSON.stringify(serverStudySettings) ||
+      JSON.stringify(state.starterPacks) !== JSON.stringify(normalizeStarterPacks(data.starterPacks)) ||
       !foldersHaveSameSyncState(data.folders || [], getAllFolders()) ||
       !activitiesHaveSameSyncState(state.activity, serverActivity) ||
+      englishTrainerSyncSignature(state.englishTrainer) !== englishTrainerSyncSignature(serverEnglishTrainer) ||
       polishSyncSignature(state.polish) !== polishSyncSignature(serverPolish)
     ) {
       syncCardsToServer();
@@ -480,15 +607,54 @@ async function loadServerCards() {
   }
 }
 
-async function loadStarterCards() {
+function normalizeStarterPacks(packs) {
+  return [...new Set((Array.isArray(packs) ? packs : []).filter((pack) => typeof pack === "string"))].sort();
+}
+
+async function ensureStarterCards({ restore = false } = {}) {
+  if (!state.cards.length && !state.starterPacks.length && !restore) {
+    state.cards = await loadStarterCards();
+  } else if (restore || !state.starterPacks.includes(BASIC_ACTIONS_PACK)) {
+    const phrases = new Set(state.cards.map((card) => songPhraseKey(card.phrase)));
+    const basicCards = await loadStarterCards(BASIC_ACTIONS_PACK);
+    state.cards.push(...basicCards.filter((card) => !phrases.has(songPhraseKey(card.phrase))));
+  }
+}
+
+async function loadOfflineStarterCards() {
+  await ensureStarterCards();
+  persistCardsLocally();
+  renderStudy();
+}
+
+async function startBasicActions() {
+  els.startBasicActionsButton.disabled = true;
+  try {
+    await ensureStarterCards({ restore: true });
+    state.activeFolder = BASIC_ACTIONS_FOLDER;
+    localStorage.setItem(FOLDER_KEY, state.activeFolder);
+    saveCards();
+    renderStudy(0);
+  } finally {
+    els.startBasicActionsButton.disabled = false;
+  }
+}
+
+async function loadStarterCards(pack = "") {
   try {
     const response = await fetch(DEFAULT_CARDS_URL, { cache: "no-store" });
     if (!response.ok) throw new Error("starter cards unavailable");
     const data = await response.json();
-    const cards = Array.isArray(data.cards) ? data.cards.map(hydrateCard) : [];
+    if (!Array.isArray(data.cards)) throw new Error("Invalid starter cards");
+    const cards = data.cards.map((card, index) => ({
+      ...hydrateCard(card),
+      id: card.id.startsWith("basic-action-") ? `${card.id}-${state.profileId}` : `starter-${state.profileId}-${index + 1}`,
+    })).filter((card) => !pack || card.id.startsWith("basic-action-"));
+    if (data.cards.some((card) => card.id.startsWith("basic-action-"))) {
+      state.starterPacks = normalizeStarterPacks([...state.starterPacks, BASIC_ACTIONS_PACK]);
+    }
     return cards.map((card, index) => ({
       ...card,
-      id: `starter-${state.profileId}-${index + 1}`,
       attempts: 0,
       correct: 0,
       level: 0,
@@ -502,11 +668,18 @@ async function loadStarterCards() {
   }
 }
 
-function saveCards() {
+function persistCardsLocally() {
+  localStorage.setItem(`${STUDY_SETTINGS_KEY}:${state.profileId}`, JSON.stringify(state.studySettings));
+  localStorage.setItem(`${STARTER_PACKS_KEY}:${state.profileId}`, JSON.stringify(state.starterPacks));
   localStorage.setItem(getLocalCardsKey(), JSON.stringify(state.cards));
   localStorage.setItem(getLocalFoldersKey(), JSON.stringify(getAllFolders()));
   localStorage.setItem(getLocalActivityKey(), JSON.stringify(state.activity));
+  localStorage.setItem(getLocalEnglishTrainerKey(), JSON.stringify(state.englishTrainer));
   localStorage.setItem(getLocalPolishKey(), JSON.stringify(state.polish));
+}
+
+function saveCards() {
+  persistCardsLocally();
   syncCardsToServer();
 }
 
@@ -591,10 +764,143 @@ function activitiesHaveSameSyncState(leftActivity = {}, rightActivity = {}) {
   return JSON.stringify(normalizeForCompare(leftActivity)) === JSON.stringify(normalizeForCompare(rightActivity));
 }
 
+function normalizeEnglishTrainerWord(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[’`´]/g, "'")
+    .replace(/[^a-z' -]/gi, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 90);
+}
+
+function englishTrainerWordKey(word) {
+  return normalizeEnglishTrainerWord(word);
+}
+
+function inferEnglishTrainerPartOfSpeech(word = "", explicitPart = "") {
+  const part = normalizeFreeText(explicitPart, 40).toLowerCase();
+  if (part.includes("verb") || part.includes("глаг")) return "verb";
+  if (part.includes("noun") || part.includes("существ")) return "noun";
+  if (part.includes("phrase") || part.includes("фраз")) return "phrase";
+  if (part.includes("adj") || part.includes("прилаг")) return "adjective";
+  const cleanWord = normalizeEnglishTrainerWord(word);
+  if (cleanWord.includes(" ")) return "phrase";
+  if (cleanWord.endsWith("ing") || cleanWord.endsWith("ed")) return "verb";
+  return "";
+}
+
+function normalizeEnglishTrainerWordEntry(entry = {}) {
+  const word = normalizeEnglishTrainerWord(entry.word || entry.english || "");
+  if (!word) return null;
+  return {
+    id: entry.id || crypto.randomUUID(),
+    word,
+    translation: normalizeFreeText(entry.translation || entry.ru || "", 80),
+    partOfSpeech: inferEnglishTrainerPartOfSpeech(word, entry.partOfSpeech || entry.pos || ""),
+    level: normalizeFreeText(entry.level || "A1", 20),
+    notes: normalizeFreeText(entry.notes || "", 160),
+    boostRemaining: Math.max(0, Math.min(12, Number(entry.boostRemaining || entry.priorityBoost || 0) || 0)),
+    createdAt: Number.isFinite(entry.createdAt) ? entry.createdAt : Date.now(),
+  };
+}
+
+function normalizeEnglishTrainerExercise(exercise = {}) {
+  if (!exercise.promptRu) return null;
+  return {
+    id: exercise.id || crypto.randomUUID(),
+    promptRu: normalizeFreeText(exercise.promptRu, 620),
+    expectedEn: normalizeFreeText(exercise.expectedEn || exercise.expectedEnglish, 620),
+    hint: normalizeFreeText(exercise.hint, 420),
+    mode: ["easy", "medium", "hard", "manual"].includes(exercise.mode) ? exercise.mode : "medium",
+    exerciseStyle: normalizeFreeText(exercise.exerciseStyle || "", 20),
+    folderPath: normalizeFolderPath(exercise.folderPath || "all"),
+    targetCount: [5, 10, 20].includes(Number(exercise.targetCount || exercise.count)) ? Number(exercise.targetCount || exercise.count) : 10,
+    usedWords: Array.isArray(exercise.usedWords) ? exercise.usedWords.map(normalizeEnglishTrainerWord).filter(Boolean).slice(0, 16) : [],
+    grammarFocus: Array.isArray(exercise.grammarFocus) ? exercise.grammarFocus.map((item) => normalizeFreeText(item, 100)).filter(Boolean).slice(0, 8) : [],
+    createdAt: Number.isFinite(exercise.createdAt) ? exercise.createdAt : Date.now(),
+  };
+}
+
+function normalizeEnglishTrainerState(englishTrainer = {}) {
+  const wordsByKey = new Map();
+  if (Array.isArray(englishTrainer.words)) {
+    englishTrainer.words.forEach((entry) => {
+      const normalized = normalizeEnglishTrainerWordEntry(entry);
+      if (!normalized) return;
+      const key = englishTrainerWordKey(normalized.word);
+      wordsByKey.set(key, { ...(wordsByKey.get(key) || {}), ...normalized });
+    });
+  }
+
+  const exercises = Array.isArray(englishTrainer.exercises)
+    ? englishTrainer.exercises.map(normalizeEnglishTrainerExercise).filter(Boolean).slice(0, 30)
+    : [];
+  const currentExercise = normalizeEnglishTrainerExercise(englishTrainer.currentExercise || {}) || null;
+
+  return {
+    words: [...wordsByKey.values()].sort((left, right) => left.word.localeCompare(right.word, "en")),
+    folderPath: normalizeFolderPath(englishTrainer.folderPath || "all"),
+    folderUpdatedAt: Number.isFinite(englishTrainer.folderUpdatedAt) ? englishTrainer.folderUpdatedAt : 0,
+    excludedCardWords: [...new Set((Array.isArray(englishTrainer.excludedCardWords) ? englishTrainer.excludedCardWords : [])
+      .map(englishTrainerWordKey).filter(Boolean))].sort(),
+    exercises,
+    currentExercise,
+    feedback: englishTrainer.feedback && typeof englishTrainer.feedback === "object" ? englishTrainer.feedback : null,
+  };
+}
+
+function englishTrainerSyncSignature(englishTrainer = {}) {
+  const normalized = normalizeEnglishTrainerState(englishTrainer);
+  return JSON.stringify({
+    folderPath: normalized.folderPath,
+    folderUpdatedAt: normalized.folderUpdatedAt,
+    excludedCardWords: normalized.excludedCardWords,
+    words: normalized.words.map((word) => ({
+      word: word.word,
+      translation: word.translation,
+      partOfSpeech: word.partOfSpeech,
+      level: word.level,
+      notes: word.notes,
+      boostRemaining: word.boostRemaining,
+    })),
+    currentExercise: normalized.currentExercise,
+    exercises: normalized.exercises,
+  });
+}
+
+function mergeEnglishTrainerState(serverEnglishTrainer = {}, localEnglishTrainer = {}) {
+  const mergedWords = [
+    ...normalizeEnglishTrainerState(serverEnglishTrainer).words,
+    ...normalizeEnglishTrainerState(localEnglishTrainer).words,
+  ];
+  const exercisesById = new Map();
+  [
+    ...normalizeEnglishTrainerState(serverEnglishTrainer).exercises,
+    ...normalizeEnglishTrainerState(localEnglishTrainer).exercises,
+  ].forEach((exercise) => {
+    exercisesById.set(exercise.id, exercise);
+  });
+  return normalizeEnglishTrainerState({
+    words: mergedWords,
+    folderPath: localEnglishTrainer.folderUpdatedAt > (serverEnglishTrainer.folderUpdatedAt || 0)
+      ? localEnglishTrainer.folderPath : serverEnglishTrainer.folderPath,
+    folderUpdatedAt: Math.max(localEnglishTrainer.folderUpdatedAt || 0, serverEnglishTrainer.folderUpdatedAt || 0),
+    excludedCardWords: [
+      ...normalizeEnglishTrainerState(serverEnglishTrainer).excludedCardWords,
+      ...normalizeEnglishTrainerState(localEnglishTrainer).excludedCardWords,
+    ],
+    exercises: [...exercisesById.values()].sort((left, right) => right.createdAt - left.createdAt),
+    currentExercise: normalizeEnglishTrainerState(localEnglishTrainer).currentExercise || normalizeEnglishTrainerState(serverEnglishTrainer).currentExercise,
+    feedback: normalizeEnglishTrainerState(localEnglishTrainer).feedback || normalizeEnglishTrainerState(serverEnglishTrainer).feedback,
+  });
+}
+
 function normalizePolishWordEntry(entry = {}) {
   const word = normalizePolishWord(entry.word || entry.polish || "");
   if (!word) return null;
-  const partOfSpeech = normalizeFreeText(entry.partOfSpeech || entry.pos || "", 40) || (word.includes(" ") ? "phrase" : "");
+  const partOfSpeech = inferPolishPartOfSpeech(word, entry.partOfSpeech || entry.pos || "");
   return {
     id: entry.id || crypto.randomUUID(),
     word,
@@ -604,6 +910,7 @@ function normalizePolishWordEntry(entry = {}) {
     level: normalizeFreeText(entry.level || "A1", 20),
     notes: normalizeFreeText(entry.notes || "", 160),
     forms: entry.forms && typeof entry.forms === "object" ? entry.forms : {},
+    boostRemaining: Math.max(0, Math.min(12, Number(entry.boostRemaining || entry.priorityBoost || 0) || 0)),
     createdAt: Number.isFinite(entry.createdAt) ? entry.createdAt : Date.now(),
   };
 }
@@ -688,11 +995,21 @@ function mergePolishState(serverPolish = {}, localPolish = {}) {
 }
 
 async function syncCardsToServer() {
+  if (!state.profileSyncReady) return;
   try {
     await fetch("/api/cards", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ profile: state.profileId, cards: state.cards, folders: getAllFolders(), activity: state.activity, polish: state.polish }),
+      body: JSON.stringify({
+        profile: state.profileId,
+        cards: state.cards,
+        starterPacks: state.starterPacks,
+        studySettings: state.studySettings,
+        folders: getAllFolders(),
+        activity: state.activity,
+        englishTrainer: state.englishTrainer,
+        polish: state.polish,
+      }),
     });
   } catch {
     setStatus("Карточки сохранены на этом устройстве. Сервер синхронизации сейчас недоступен.", "warn");
@@ -1107,6 +1424,8 @@ function chooseActivityGoal(mode) {
 }
 
 function renderStudy(index = state.currentIndex) {
+  cancelSwipe();
+  if (state.activeFolder !== "all" && !getFolderTreePaths().includes(state.activeFolder)) state.activeFolder = "all";
   const deck = getStudyDeck();
 
   if (!deck.length) {
@@ -1117,8 +1436,10 @@ function renderStudy(index = state.currentIndex) {
     els.flashcard.classList.remove("is-flipped");
     els.flashcard.style.transform = "";
     setVisual(els.cardImage, "", "Картинка появится здесь");
+    els.cardMotion.hidden = true;
     els.cardPhrase.textContent = "No cards yet";
     setTranslation("", true);
+    renderStudyMode();
     updateSpeechControls();
     renderActivity();
     renderDeck();
@@ -1134,11 +1455,49 @@ function renderStudy(index = state.currentIndex) {
   els.flashcard.classList.remove("is-flipped");
   els.flashcard.style.transform = "";
   setVisual(els.cardImage, card.imageUrl, "Нет картинки");
+  const motionIcon = BASIC_ACTION_MOTIONS.get(songPhraseKey(card.phrase));
+  els.cardMotion.hidden = !motionIcon;
+  if (motionIcon) els.cardMotionIcon.setAttribute("href", `assets/icons.svg#${motionIcon}`);
   els.cardPhrase.textContent = card.phrase;
   setTranslation(card.translation, true);
+  renderStudyMode();
   updateSpeechControls();
   renderActivity();
   renderDeck();
+}
+
+function setStudyMode(mode) {
+  if (!["picture", "russian"].includes(mode) || mode === state.studySettings.mode) return;
+  state.studySettings = { mode, updatedAt: Math.max(Date.now(), state.studySettings.updatedAt + 1) };
+  renderStudy();
+  saveCards();
+}
+
+function renderStudyMode() {
+  const card = currentCard();
+  const russian = state.studySettings.mode === "russian";
+  els.studyModeButtons.forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.studyMode === state.studySettings.mode)));
+  els.flashcard.classList.toggle("is-russian-mode", russian);
+  els.cardImage.hidden = russian;
+  els.cardRussianPrompt.hidden = !russian;
+  els.cardRussianPrompt.textContent = card
+    ? String(card.translation || "").trim() || "У этой карточки пока нет русского перевода."
+    : "Добавь карточку для тренировки.";
+  els.cardAnswerImage.hidden = !russian || !card?.imageUrl;
+  setVisual(els.cardAnswerImage, russian ? card?.imageUrl : "");
+  els.cardTranslation.hidden = russian;
+  if (russian) els.cardMotion.hidden = true;
+  updateCardFaceAccessibility();
+}
+
+function updateCardFaceAccessibility() {
+  els.cardFront.setAttribute("aria-hidden", String(state.flipped));
+  els.cardBack.setAttribute("aria-hidden", String(!state.flipped));
+  els.cardFront.toggleAttribute("inert", state.flipped);
+  els.cardBack.toggleAttribute("inert", !state.flipped);
+  els.flashcard.setAttribute("aria-label", state.flipped
+    ? (state.studySettings.mode === "russian" ? "Показать русский текст" : "Показать картинку")
+    : "Показать фразу на английском");
 }
 
 function renderDeck() {
@@ -1150,6 +1509,7 @@ function renderDeck() {
   const deck = getStudyDeck();
   const summary = deck.length === 1 ? "1 карточка" : `${deck.length} карточек`;
   els.deckSummary.textContent = `${summary} · ${folderLabel(state.activeFolder)}`;
+  els.studyFolderLabel.textContent = folderLabel(state.activeFolder);
 
   if (!deck.length) {
     const empty = document.createElement("p");
@@ -1380,9 +1740,10 @@ function expandActiveFolderAncestors() {
 
 function flipCard() {
   if (Date.now() < state.ignoreFlipUntil) return;
-  if (!state.cards.length) return;
+  if (!currentCard()) return;
   state.flipped = !state.flipped;
   els.flashcard.classList.toggle("is-flipped", state.flipped);
+  updateCardFaceAccessibility();
 }
 
 function speak(text) {
@@ -1481,18 +1842,16 @@ function moveRatedCard(card, known) {
 
 function setSwipeVisual(deltaX) {
   const capped = Math.max(-190, Math.min(190, deltaX));
-  const rawProgress = Math.min(1, Math.abs(capped) / SWIPE_THRESHOLD);
+  const rawProgress = Math.min(1, Math.abs(capped) / (state.drag?.threshold || swipeThreshold()));
   const progress = Math.min(1, rawProgress * 1.35);
   els.flashcard.style.transform = `translateX(${capped}px) rotate(${capped / 13}deg)`;
   els.flashcard.style.setProperty("--swipe-left-opacity", capped < 0 ? progress : 0);
   els.flashcard.style.setProperty("--swipe-right-opacity", capped > 0 ? progress : 0);
   els.flashcard.style.setProperty("--swipe-left-bg", capped < 0 ? progress : 0);
   els.flashcard.style.setProperty("--swipe-right-bg", capped > 0 ? progress : 0);
-  scheduleSwipeReset();
 }
 
 function resetSwipeVisual() {
-  clearSwipeReset();
   els.flashcard.classList.remove("is-dragging");
   els.flashcard.style.transform = "";
   els.flashcard.style.setProperty("--swipe-left-opacity", 0);
@@ -1501,57 +1860,103 @@ function resetSwipeVisual() {
   els.flashcard.style.setProperty("--swipe-right-bg", 0);
 }
 
-function clearSwipeReset() {
-  if (!state.dragResetTimer) return;
-  window.clearTimeout(state.dragResetTimer);
-  state.dragResetTimer = 0;
-}
-
-function scheduleSwipeReset() {
-  clearSwipeReset();
-  state.dragResetTimer = window.setTimeout(() => {
-    state.drag = null;
-    resetSwipeVisual();
-  }, 1800);
+function swipeThreshold() {
+  const width = els.flashcard.clientWidth || SWIPE_THRESHOLD * 4;
+  return Math.min(SWIPE_THRESHOLD, Math.max(48, width * 0.25));
 }
 
 function startSwipe(event) {
-  if (!currentCard()) return;
-  if (event.target.closest(".listen-button, .translation-chip")) return;
-  clearSwipeReset();
-  state.drag = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, active: false };
+  if (event.pointerType === "touch") return;
+  if (!currentCard() || state.drag || event.isPrimary === false) return;
+  if (event.pointerType === "mouse" && event.button !== 0) return;
+  if (event.target.closest?.(".listen-button, .translation-chip")) return;
+  if (event.pointerType === "mouse") {
+    event.preventDefault();
+    els.flashcard.focus({ preventScroll: true });
+  }
+  state.drag = { input: "pointer", pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, active: false, threshold: swipeThreshold() };
   els.flashcard.setPointerCapture?.(event.pointerId);
 }
 
 function moveSwipe(event) {
-  if (!state.drag || state.drag.pointerId !== event.pointerId) return;
+  if (state.drag?.input !== "pointer" || state.drag.pointerId !== event.pointerId) return;
+  event.preventDefault();
   const deltaX = event.clientX - state.drag.startX;
   const deltaY = event.clientY - state.drag.startY;
-  if (!state.drag.active && Math.abs(deltaX) < 10) return;
-  if (!state.drag.active && Math.abs(deltaY) > Math.abs(deltaX) * 1.2) return;
+  if (Math.abs(deltaY) >= 8) state.drag.moved = true;
+  if (!state.drag.active) {
+    if (Math.abs(deltaX) < 8) return;
+  }
 
   state.drag.active = true;
-  event.preventDefault();
   els.flashcard.classList.add("is-dragging");
   setSwipeVisual(deltaX);
 }
 
 function finishSwipe(event) {
-  if (!state.drag || state.drag.pointerId !== event.pointerId) return;
-  const deltaX = event.clientX - state.drag.startX;
-  const wasActive = state.drag.active;
-  els.flashcard.releasePointerCapture?.(event.pointerId);
+  if (state.drag?.input !== "pointer" || state.drag.pointerId !== event.pointerId) return;
+  completeSwipe(event.clientX);
+}
+
+function completeSwipe(clientX) {
+  const { startX, active, moved, pointerId, input, threshold } = state.drag;
+  const deltaX = clientX - startX;
   state.drag = null;
   resetSwipeVisual();
+  if (input === "pointer" && els.flashcard.hasPointerCapture?.(pointerId)) els.flashcard.releasePointerCapture(pointerId);
 
-  if (!wasActive || Math.abs(deltaX) < SWIPE_THRESHOLD) return;
-  state.ignoreFlipUntil = Date.now() + 450;
+  if (active || moved) state.ignoreFlipUntil = Date.now() + 450;
+  if (!active || Math.abs(deltaX) < threshold) return;
   rateCard(deltaX > 0);
 }
 
-function cancelSwipe() {
+function cancelSwipe(event) {
+  if (!state.drag) return;
+  // Browsers may cancel pointer events while the separate touch gesture is still alive.
+  if (event?.pointerId !== undefined && (state.drag.input !== "pointer" || event.pointerId !== state.drag.pointerId)) return;
+  const { pointerId, active, moved, input } = state.drag;
   state.drag = null;
+  if (active || moved) state.ignoreFlipUntil = Date.now() + 450;
   resetSwipeVisual();
+  if (input === "pointer" && els.flashcard.hasPointerCapture?.(pointerId)) els.flashcard.releasePointerCapture(pointerId);
+}
+
+function startTouchSwipe(event) {
+  if (event.touches.length !== 1 || state.drag || !currentCard()) return;
+  if (event.target.closest?.(".listen-button, .translation-chip")) return;
+  const touch = event.touches[0];
+  state.drag = { input: "touch", touchId: touch.identifier, startX: touch.clientX, startY: touch.clientY, axis: null, active: false, threshold: swipeThreshold() };
+}
+
+function moveTouchSwipe(event) {
+  const drag = state.drag;
+  if (drag?.input !== "touch") return;
+  if (event.touches.length !== 1) {
+    drag.moved = true;
+    cancelSwipe();
+    return;
+  }
+  const touch = [...event.touches].find((item) => item.identifier === drag.touchId);
+  if (!touch) return;
+  const deltaX = touch.clientX - drag.startX;
+  const deltaY = touch.clientY - drag.startY;
+  if (!drag.axis) {
+    if (Math.max(Math.abs(deltaX), Math.abs(deltaY)) < 6) return;
+    drag.moved = true;
+    // Decide once: later vertical drift must never hand a horizontal swipe to page scrolling.
+    drag.axis = event.cancelable && Math.abs(deltaX) >= Math.abs(deltaY) * 0.8 ? "x" : "y";
+  }
+  if (drag.axis !== "x") return;
+  if (event.cancelable) event.preventDefault();
+  drag.active = true;
+  els.flashcard.classList.add("is-dragging");
+  setSwipeVisual(deltaX);
+}
+
+function finishTouchSwipe(event) {
+  if (state.drag?.input !== "touch") return;
+  const touch = [...event.changedTouches].find((item) => item.identifier === state.drag.touchId);
+  if (touch) completeSwipe(touch.clientX);
 }
 
 async function updateAiStatus() {
@@ -1590,7 +1995,7 @@ function updatePhraseMode() {
   const manual = phraseMode() === "manual";
   els.manualPhraseField.hidden = !manual;
   els.generateButton.textContent = actionButtonLabel();
-  els.creatorTitle.textContent = state.editingCardId ? "Изменить карточку" : "Новое слово";
+  els.creatorTitle.textContent = state.editingCardId ? "Изменить карточку" : "Новая карточка";
   els.cancelEditButton.hidden = !state.editingCardId;
   setStatus(
     state.editingCardId
@@ -1808,6 +2213,8 @@ function saveDraft() {
   setStatus(wasEditing ? "Карточка обновлена." : "Карточка сохранена в колоду.", "ok");
   renderStudy(0);
   updateSpeechControls();
+  closeAppDialog(els.cardCreatorDialog);
+  setEnglishPractice("cards");
 }
 
 function setStatus(message, tone = "neutral") {
@@ -1821,6 +2228,575 @@ function setPolishStatus(message, tone = "neutral") {
   els.polishStatus.dataset.tone = tone;
 }
 
+function setEnglishTrainerStatus(message, tone = "neutral") {
+  if (!els.englishTrainerStatus) return;
+  els.englishTrainerStatus.textContent = message;
+  els.englishTrainerStatus.dataset.tone = tone;
+  els.englishTrainerDictionaryStatus.textContent = message;
+  els.englishTrainerDictionaryStatus.dataset.tone = tone;
+}
+
+function parseEnglishTrainerWordLines(text) {
+  return String(text || "")
+    .split(/\n|;/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const parts = line.split(/\s+[-–—:]\s+|\s*=\s*/);
+      const word = normalizeEnglishTrainerWord(parts[0] || line);
+      return normalizeEnglishTrainerWordEntry({
+        word,
+        translation: normalizeFreeText(parts.slice(1).join(" - "), 80),
+        partOfSpeech: inferEnglishTrainerPartOfSpeech(word),
+        level: "A1",
+        notes: word.includes(" ") ? "устойчивое выражение" : "",
+      });
+    })
+    .filter(Boolean);
+}
+
+function shouldExtractEnglishTrainerWordsWithAi(text = "") {
+  const cleanText = String(text || "").trim();
+  if (!cleanText) return false;
+  const lines = cleanText.split(/\n+/).map((line) => line.trim()).filter(Boolean);
+  return /[.!?]/.test(cleanText) || lines.some((line) => line.split(/\s+/).length >= 4 && !/\s[-–—:]\s/.test(line));
+}
+
+function englishTrainerWordsNeedAiDetails(words = []) {
+  return words.some((word) => !word.translation || !word.partOfSpeech);
+}
+
+function mergeEnglishTrainerWords(words = []) {
+  state.englishTrainer = normalizeEnglishTrainerState(state.englishTrainer);
+  const byKey = new Map(state.englishTrainer.words.map((word) => [englishTrainerWordKey(word.word), word]));
+  words.forEach((entry) => {
+    const normalized = normalizeEnglishTrainerWordEntry(entry);
+    if (!normalized) return;
+    const key = englishTrainerWordKey(normalized.word);
+    byKey.set(key, { ...(byKey.get(key) || {}), ...normalized });
+    state.englishTrainer.excludedCardWords = state.englishTrainer.excludedCardWords.filter((excluded) => excluded !== key);
+  });
+  state.englishTrainer.words = [...byKey.values()].sort((left, right) => left.word.localeCompare(right.word, "en"));
+  return words.map(normalizeEnglishTrainerWordEntry).filter(Boolean).length;
+}
+
+function englishTrainerWords(folderPath = "all") {
+  const trainer = normalizeEnglishTrainerState(state.englishTrainer);
+  const cards = state.cards.filter((card) => folderDescendantMatches(card, folderPath));
+  const cardKeys = new Set(cards.map((card) => englishTrainerWordKey(card.word)));
+  const byKey = new Map(trainer.words.filter((word) => folderPath === "all" || cardKeys.has(englishTrainerWordKey(word.word)))
+    .map((word) => [englishTrainerWordKey(word.word), word]));
+  const excluded = new Set(trainer.excludedCardWords);
+  // Card keywords are vocabulary; the sentence translation is context, not a word translation.
+  for (const card of cards) {
+    const key = englishTrainerWordKey(card.word);
+    if (!key || excluded.has(key)) continue;
+    const existing = byKey.get(key);
+    byKey.set(key, {
+      ...normalizeEnglishTrainerWordEntry({
+        id: `card-word:${key}`,
+        word: key,
+        notes: [card.phrase, card.translation].filter(Boolean).join(" — "),
+        createdAt: card.createdAt,
+      }),
+      ...existing,
+      notes: (folderPath === "all" && existing?.notes) || normalizeFreeText([card.phrase, card.translation].filter(Boolean).join(" — "), 160),
+      fromCards: true,
+      contextTranslation: existing?.contextTranslation || card.translation,
+    });
+  }
+  return [...byKey.values()].sort((left, right) => left.word.localeCompare(right.word, "en"));
+}
+
+async function addEnglishTrainerWordsFromInput() {
+  const text = els.englishTrainerWordsInput.value;
+  let words = parseEnglishTrainerWordLines(text);
+  if (!words.length) {
+    setEnglishTrainerStatus("Напиши хотя бы одно английское слово.", "warn");
+    els.englishTrainerWordsInput.focus();
+    return;
+  }
+
+  els.addEnglishTrainerWordsButton.disabled = true;
+  try {
+    if (shouldExtractEnglishTrainerWordsWithAi(text) || englishTrainerWordsNeedAiDetails(words)) {
+      setEnglishTrainerStatus("AI разбирает текст на полезные английские слова и фразы.", "work");
+      await updateAiStatus();
+      if (!state.deepSeekOnline) throw new Error("DEEPSEEK_API_KEY is not set");
+      const data = await requestPolishApi("/api/english/sentence-trainer/extract-words", {
+        text,
+        existingWords: englishTrainerWords().map((word) => word.word),
+      });
+      words = Array.isArray(data.words) ? data.words : [];
+    }
+
+    if (!words.length) {
+      setEnglishTrainerStatus("AI не нашел новых слов в этом тексте.", "warn");
+      return;
+    }
+
+    mergeEnglishTrainerWords(words);
+    els.englishTrainerWordsInput.value = "";
+    saveCards();
+    renderEnglishTrainer();
+    setEnglishTrainerStatus(`Добавлено слов/фраз: ${words.length}.`, "ok");
+  } catch (error) {
+    setEnglishTrainerStatus(`Не получилось разобрать слова: ${friendlyError(error.message)}.`, "error");
+  } finally {
+    els.addEnglishTrainerWordsButton.disabled = false;
+  }
+}
+
+async function suggestEnglishTrainerWords() {
+  state.englishTrainer = normalizeEnglishTrainerState(state.englishTrainer);
+  els.suggestEnglishTrainerWordsButton.disabled = true;
+  setEnglishTrainerStatus("AI подбирает базовые английские слова.", "work");
+  try {
+    await updateAiStatus();
+    if (!state.deepSeekOnline) throw new Error("DEEPSEEK_API_KEY is not set");
+    const data = await requestPolishApi("/api/english/sentence-trainer/suggest-words", {
+      existingWords: englishTrainerWords().map((word) => word.word),
+      count: 10,
+    });
+    const words = Array.isArray(data.words) ? data.words : [];
+    if (!words.length) {
+      setEnglishTrainerStatus("AI не нашел новых слов. Попробуй позже.", "warn");
+      return;
+    }
+    els.englishTrainerWordsInput.value = words
+      .map((word) => [word.word || word.english, word.translation || word.ru].filter(Boolean).join(" - "))
+      .filter(Boolean)
+      .join("\n");
+    els.englishTrainerWordsInput.focus();
+    setEnglishTrainerStatus("AI вписал слова в поле. Нажми «Добавить мои слова».", "ok");
+  } catch (error) {
+    setEnglishTrainerStatus(`Не получилось предложить слова: ${friendlyError(error.message)}.`, "error");
+  } finally {
+    els.suggestEnglishTrainerWordsButton.disabled = false;
+  }
+}
+
+function englishTrainerWordType(word = {}) {
+  const part = inferEnglishTrainerPartOfSpeech(word.word, word.partOfSpeech);
+  return part || "other";
+}
+
+function englishTrainerWordTypeLabel(type) {
+  return {
+    verb: "Глагол",
+    noun: "Существительное",
+    phrase: "Фраза",
+    adjective: "Прилагательное",
+    other: "Слово",
+  }[type] || "Слово";
+}
+
+function filteredEnglishTrainerWords() {
+  const queryTokens = normalizeSearchText(els.englishTrainerDictionarySearch?.value || "", 120)
+    .split(/[,\s]+/)
+    .filter(Boolean);
+  const filter = els.englishTrainerDictionaryFilter?.value || "all";
+  return englishTrainerWords().filter((word) => {
+    const type = englishTrainerWordType(word);
+    const haystack = normalizeSearchText([word.word, word.translation, word.contextTranslation, englishTrainerWordTypeLabel(type), word.notes].join(" "), 500);
+    return (filter === "all" || type === filter) && (!queryTokens.length || queryTokens.every((token) => haystack.includes(token)));
+  });
+}
+
+function renderEnglishTrainerDictionary() {
+  if (!els.englishTrainerDictionaryList) return;
+  const words = filteredEnglishTrainerWords();
+  const total = englishTrainerWords().length;
+  els.englishTrainerDictionaryCount.textContent = `${words.length} из ${total} слов/фраз`;
+  els.englishTrainerDictionaryList.replaceChildren();
+  if (!words.length) {
+    const empty = document.createElement("p");
+    empty.className = "empty-list";
+    empty.textContent = total ? "По этому поиску ничего не найдено." : "Словарь пустой.";
+    els.englishTrainerDictionaryList.append(empty);
+    return;
+  }
+
+  words.forEach((word) => {
+    const row = document.createElement("article");
+    row.className = "polish-dictionary-row";
+    const type = englishTrainerWordType(word);
+    const boostRemaining = Math.max(0, Number(word.boostRemaining) || 0);
+    row.classList.toggle("is-boosted", boostRemaining > 0);
+    row.innerHTML = `
+      <div>
+        <h3>${escapeHtml(word.word)}</h3>
+        <p>${escapeHtml([word.translation || (word.contextTranslation ? `В карточке: ${word.contextTranslation}` : "перевод не добавлен"), englishTrainerWordTypeLabel(type), boostRemaining ? `чаще: ${boostRemaining}` : ""].filter(Boolean).join(" · "))}</p>
+      </div>
+    `;
+    const boostButton = document.createElement("button");
+    boostButton.type = "button";
+    boostButton.className = "priority-word-button";
+    boostButton.setAttribute("aria-label", boostRemaining ? `Убрать частое повторение слова ${word.word}` : `Повторять чаще слово ${word.word}`);
+    boostButton.textContent = boostRemaining ? "★" : "☆";
+    boostButton.addEventListener("click", () => boostEnglishTrainerWord(word.id));
+    const deleteButton = document.createElement("button");
+    deleteButton.type = "button";
+    deleteButton.className = "delete-card-button";
+    deleteButton.setAttribute("aria-label", `Удалить слово ${word.word}`);
+    deleteButton.textContent = "×";
+    deleteButton.addEventListener("click", () => removeEnglishTrainerWord(word.id));
+    row.append(boostButton, deleteButton);
+    els.englishTrainerDictionaryList.append(row);
+  });
+}
+
+function renderEnglishTrainer() {
+  if (!els.englishTrainerDictionarySummary) return;
+  state.englishTrainer = normalizeEnglishTrainerState(state.englishTrainer);
+  renderEnglishTrainerFolders();
+  const words = englishTrainerWords();
+  const wordCount = words.length;
+  els.englishTrainerDictionarySummary.textContent = `${wordCount} слов/фраз`;
+  els.englishTrainerDictionaryPreview.textContent = wordCount
+    ? words.slice(0, 6).map((word) => word.word).join(", ")
+    : "Пока пусто";
+  renderEnglishTrainerDictionary();
+  renderEnglishTrainerExercise();
+  renderEnglishTrainerFeedback();
+}
+
+function removeEnglishTrainerWord(wordId) {
+  const word = englishTrainerWords().find((entry) => entry.id === wordId);
+  if (!word) return;
+  state.englishTrainer = normalizeEnglishTrainerState(state.englishTrainer);
+  if (word.fromCards) state.englishTrainer.excludedCardWords.push(englishTrainerWordKey(word.word));
+  state.englishTrainer.words = normalizeEnglishTrainerState(state.englishTrainer).words.filter((word) => word.id !== wordId);
+  saveCards();
+  renderEnglishTrainer();
+  setEnglishTrainerStatus("Слово удалено из английской базы.", "ok");
+}
+
+function boostEnglishTrainerWord(wordId) {
+  const word = englishTrainerWords().find((entry) => entry.id === wordId);
+  if (!word) return;
+  const boostRemaining = word.boostRemaining > 0 ? 0 : 8;
+  mergeEnglishTrainerWords([{ ...word, boostRemaining }]);
+  saveCards();
+  renderEnglishTrainer();
+  setEnglishTrainerStatus(boostRemaining ? `${word.word} будет чаще попадаться в заданиях.` : `${word.word} снова в обычном режиме.`, "ok");
+}
+
+function openEnglishTrainerDictionary() {
+  renderEnglishTrainer();
+  openAppDialog(els.englishTrainerDictionaryDialog);
+  window.setTimeout(() => els.englishTrainerDictionarySearch?.focus(), 80);
+}
+
+function closeEnglishTrainerDictionary() {
+  closeAppDialog(els.englishTrainerDictionaryDialog);
+}
+
+function openEnglishTrainerTextDialog() {
+  openAppDialog(els.englishTrainerTextDialog);
+  window.setTimeout(() => els.englishTrainerManualPromptInput?.focus(), 80);
+}
+
+function closeEnglishTrainerTextDialog() {
+  closeAppDialog(els.englishTrainerTextDialog);
+}
+
+function englishTrainerExerciseSettings() {
+  return {
+    count: Number(els.englishTrainerExerciseCount.value) || 10,
+    mode: els.englishTrainerExerciseMode.value || "medium",
+    folderPath: state.englishTrainer.folderPath || "all",
+  };
+}
+
+function renderEnglishTrainerFolders() {
+  const folders = getFolderTreePaths();
+  if (state.englishTrainer.folderPath !== "all" && !folders.includes(state.englishTrainer.folderPath)) {
+    state.englishTrainer.folderPath = "all";
+  }
+  els.englishTrainerFolderSelect.replaceChildren();
+  for (const folder of ["all", ...folders]) {
+    const option = document.createElement("option");
+    option.value = folder;
+    option.textContent = folder === "all" ? "Все карточки и слова" : folder;
+    option.selected = folder === state.englishTrainer.folderPath;
+    els.englishTrainerFolderSelect.append(option);
+  }
+}
+
+function changeEnglishTrainerFolder() {
+  state.englishTrainer.folderPath = els.englishTrainerFolderSelect.value || "all";
+  state.englishTrainer.folderUpdatedAt = Date.now();
+  state.englishTrainer.currentExercise = null;
+  state.englishTrainer.feedback = null;
+  saveCards();
+  renderEnglishTrainer();
+  setEnglishTrainerStatus("Папка выбрана. Можно создать новое задание.", "neutral");
+}
+
+function englishTrainerVocabularyForExercise(folderPath = state.englishTrainer.folderPath || "all") {
+  const words = englishTrainerWords(folderPath);
+  const usage = new Map();
+  const recent = state.englishTrainer.exercises.slice(0, 20);
+  recent.forEach((exercise, index) => {
+    new Set(exercise.usedWords.map(englishTrainerWordKey)).forEach((key) => {
+      usage.set(key, (usage.get(key) || 0) + recent.length - index);
+    });
+  });
+  // Shuffle ties, then prefer less-practised vocabulary without losing boosted words.
+  for (let index = words.length - 1; index > 0; index -= 1) {
+    const target = Math.floor(Math.random() * (index + 1));
+    [words[index], words[target]] = [words[target], words[index]];
+  }
+  const score = (word) => (usage.get(englishTrainerWordKey(word.word)) || 0) / (word.boostRemaining > 0 ? 3 : 1);
+  return words.sort((left, right) => score(left) - score(right)).slice(0, 200);
+}
+
+function recentEnglishTrainerExercisesForAi() {
+  return state.englishTrainer.exercises
+    .slice(0, 30)
+    .map((exercise) => ({
+      promptRu: exercise.promptRu,
+      expectedEn: exercise.expectedEn,
+      usedWords: exercise.usedWords,
+    }));
+}
+
+async function fetchEnglishTrainerExercise(count, mode) {
+  const folderPath = state.englishTrainer.folderPath || "all";
+  const scoped = folderPath !== "all";
+  const words = englishTrainerVocabularyForExercise(folderPath);
+  const focusCount = scoped && count >= 10 ? Math.min(3, Math.max(2, Math.floor(count / 5))) : Math.min(3, Math.max(1, Math.floor(count / 5)));
+  const focusWords = words.slice(0, focusCount).map((word) => word.word);
+  const keys = new Set(words.map((word) => word.word));
+  const sourceCards = scoped ? state.cards.filter((card) => folderDescendantMatches(card, folderPath) && keys.has(englishTrainerWordKey(card.word)))
+    .map((card) => ({ word: card.word, phrase: card.phrase, translation: card.translation })).slice(0, 40) : [];
+  const recentExercises = recentEnglishTrainerExercisesForAi();
+  const styles = scoped ? ["request", "plan", "short story", "statement"] : ["statement", "request", "plan", "comparison", "short story", "question"];
+  const previousStyle = styles.indexOf(state.englishTrainer.currentExercise?.exerciseStyle);
+  const exerciseStyle = styles[previousStyle >= 0 ? (previousStyle + 1) % styles.length : state.englishTrainer.exercises.length % styles.length];
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const data = await requestPolishApi("/api/english/sentence-trainer/create-exercise", {
+      words, focusWords, count, mode, exerciseStyle, recentExercises, folderPath, sourceCards,
+    });
+    const exercise = normalizeEnglishTrainerExercise({ ...data.exercise, mode, targetCount: count, exerciseStyle, folderPath });
+    if (!exercise?.expectedEn) throw new Error("AI не вернул полный текст задания");
+    const repeats = recentExercises.some((previous) =>
+      englishExerciseTextsMatch(previous.promptRu, exercise.promptRu) ||
+      englishExerciseTextsMatch(previous.expectedEn, exercise.expectedEn));
+    const enoughFocusWords = !scoped || count < 10 || focusWords.filter((word) => exercise.usedWords.includes(word)).length >= Math.min(2, focusWords.length);
+    if (!repeats && exercise.usedWords.includes(focusWords[0]) && enoughFocusWords) return exercise;
+    recentExercises.unshift(exercise);
+    setEnglishTrainerStatus("Подбираю другое задание по вашим карточкам.", "work");
+  }
+  throw new Error("AI повторил задание или не использовал выбранное слово. Попробуйте ещё раз");
+}
+
+function englishExerciseTextsMatch(left = "", right = "") {
+  const key = (text) => String(text).toLowerCase().replace(/ё/g, "е").replace(/[’`´]/g, "'")
+    .replace(/[^a-zа-я0-9]+/g, " ").trim().replace(/\s+/g, " ");
+  const leftKey = key(left);
+  const rightKey = key(right);
+  if (!leftKey || !rightKey) return false;
+  if (leftKey === rightKey) return true;
+  const leftTokens = new Set(leftKey.split(" "));
+  const rightTokens = new Set(rightKey.split(" "));
+  if (Math.min(leftTokens.size, rightTokens.size) < 4) return false;
+  const intersection = [...leftTokens].filter((token) => rightTokens.has(token)).length;
+  return intersection / new Set([...leftTokens, ...rightTokens]).size >= 0.85;
+}
+
+function activateEnglishTrainerExercise(exercise, { revealHints = false } = {}) {
+  const normalized = normalizeEnglishTrainerExercise(exercise);
+  if (!normalized) throw new Error("AI returned no exercise");
+  state.englishTrainer.currentExercise = normalized;
+  state.englishTrainerHintVisible = revealHints;
+  state.englishTrainerUsedWordsVisible = revealHints;
+  state.englishTrainer.feedback = null;
+  const usedKeys = new Set(normalized.usedWords.map(englishTrainerWordKey));
+  state.englishTrainer.words = normalizeEnglishTrainerState(state.englishTrainer).words.map((word) => {
+    if (!usedKeys.has(englishTrainerWordKey(word.word)) || !(Number(word.boostRemaining) > 0)) return word;
+    return { ...word, boostRemaining: Math.max(0, Number(word.boostRemaining) - 1) };
+  });
+  state.englishTrainer.exercises = [normalized, ...state.englishTrainer.exercises.filter((item) => item.id !== normalized.id)].slice(0, 30);
+  els.englishTrainerAnswerInput.value = "";
+  saveCards();
+  renderEnglishTrainer();
+}
+
+async function createEnglishTrainerExercise() {
+  if (els.createEnglishTrainerExerciseButton.disabled) return;
+  state.englishTrainer = normalizeEnglishTrainerState(state.englishTrainer);
+  if (!englishTrainerVocabularyForExercise().length) {
+    setEnglishTrainerStatus("В выбранной папке нет слов для задания. Выберите другую папку или добавьте карточки.", "warn");
+    return;
+  }
+
+  els.createEnglishTrainerExerciseButton.disabled = true;
+  els.englishTrainerFolderSelect.disabled = true;
+  const { count, mode } = englishTrainerExerciseSettings();
+  try {
+    setEnglishTrainerStatus("AI создает английское задание.", "work");
+    await updateAiStatus();
+    if (!state.deepSeekOnline) throw new Error("DEEPSEEK_API_KEY is not set");
+    const exercise = await fetchEnglishTrainerExercise(count, mode);
+    activateEnglishTrainerExercise(exercise);
+    setEnglishTrainerStatus("Задание готово.", "ok");
+  } catch (error) {
+    setEnglishTrainerStatus(`Не получилось создать задание: ${friendlyError(error.message)}.`, "error");
+  } finally {
+    els.createEnglishTrainerExerciseButton.disabled = false;
+    els.englishTrainerFolderSelect.disabled = false;
+  }
+}
+
+async function startEnglishTrainerManualPrompt() {
+  const promptRu = normalizeFreeText(els.englishTrainerManualPromptInput.value, 620);
+  if (!promptRu) {
+    setEnglishTrainerStatus("Напиши русский текст для перевода.", "warn");
+    els.englishTrainerManualPromptInput.focus();
+    return;
+  }
+
+  els.startEnglishTrainerManualPromptButton.disabled = true;
+  setEnglishTrainerStatus("AI готовит подсказки к твоему тексту.", "work");
+  try {
+    await updateAiStatus();
+    if (!state.deepSeekOnline) throw new Error("DEEPSEEK_API_KEY is not set");
+    const data = await requestPolishApi("/api/english/sentence-trainer/prepare-manual", {
+      promptRu,
+      words: englishTrainerVocabularyForExercise(),
+    });
+    activateEnglishTrainerExercise({
+      ...(data.exercise || {}),
+      promptRu,
+      mode: "manual",
+      targetCount: 10,
+    }, { revealHints: true });
+    setEnglishTrainerStatus("Свой текст готов с подсказками. Напиши ответ по-английски.", "ok");
+  } catch (error) {
+    activateEnglishTrainerExercise({
+      promptRu,
+      expectedEn: "",
+      hint: "Сначала переведи сам. AI проверит ответ и предложит естественный английский вариант.",
+      mode: "manual",
+      targetCount: 10,
+      usedWords: [],
+      grammarFocus: ["свой текст"],
+    }, { revealHints: true });
+    setEnglishTrainerStatus(`Свой текст создан без AI-подсказок: ${friendlyError(error.message)}.`, "warn");
+  } finally {
+    els.startEnglishTrainerManualPromptButton.disabled = false;
+    els.englishTrainerManualPromptInput.value = "";
+    closeEnglishTrainerTextDialog();
+    els.englishTrainerAnswerInput.focus();
+  }
+}
+
+function renderEnglishTrainerExercise() {
+  const exercise = normalizeEnglishTrainerExercise(state.englishTrainer.currentExercise || {});
+  els.englishTrainerExerciseCard.hidden = !exercise;
+  if (!exercise) return;
+  els.englishTrainerPromptRu.textContent = exercise.promptRu;
+  els.englishTrainerExerciseHint.textContent = exercise.hint || "Используй свои слова из базы. Служебные слова можно добавлять по смыслу.";
+  els.englishTrainerExerciseHint.classList.toggle("is-hidden", !state.englishTrainerHintVisible);
+  els.englishTrainerExerciseHint.setAttribute("role", "button");
+  els.englishTrainerExerciseHint.setAttribute("tabindex", "0");
+  els.englishTrainerExerciseHint.setAttribute("aria-label", state.englishTrainerHintVisible ? "Скрыть подсказку" : "Показать подсказку");
+  els.englishTrainerUsedWords.replaceChildren();
+  els.englishTrainerUsedWords.classList.toggle("is-hidden", !state.englishTrainerUsedWordsVisible);
+  els.englishTrainerUsedWords.setAttribute("role", "button");
+  els.englishTrainerUsedWords.setAttribute("tabindex", "0");
+  els.englishTrainerUsedWords.setAttribute("aria-label", state.englishTrainerUsedWordsVisible ? "Скрыть слова-подсказки" : "Показать слова-подсказки");
+  exercise.usedWords.forEach((word) => {
+    const chip = document.createElement("span");
+    chip.className = "polish-used-chip";
+    chip.textContent = word;
+    els.englishTrainerUsedWords.append(chip);
+  });
+}
+
+function toggleEnglishTrainerHint() {
+  if (!normalizeEnglishTrainerExercise(state.englishTrainer.currentExercise || {})) return;
+  state.englishTrainerHintVisible = !state.englishTrainerHintVisible;
+  renderEnglishTrainerExercise();
+}
+
+function toggleEnglishTrainerUsedWords() {
+  if (!normalizeEnglishTrainerExercise(state.englishTrainer.currentExercise || {})) return;
+  state.englishTrainerUsedWordsVisible = !state.englishTrainerUsedWordsVisible;
+  renderEnglishTrainerExercise();
+}
+
+function renderEnglishTrainerFeedback() {
+  const feedback = state.englishTrainer.feedback;
+  els.englishTrainerFeedback.hidden = !feedback;
+  els.englishTrainerFeedback.replaceChildren();
+  if (!feedback) return;
+  const title = document.createElement("h3");
+  title.textContent = feedback.isCorrect ? "Похоже, всё правильно" : "Разбор ответа";
+  const result = document.createElement("div");
+  result.className = "polish-feedback-result";
+  result.innerHTML = `<span>Оценка</span><strong>${Math.round(feedback.score)}%</strong><p>${escapeHtml(feedback.correctedAnswer || "")}</p>`;
+  els.englishTrainerFeedback.append(title, result);
+  if (Array.isArray(feedback.mistakes) && feedback.mistakes.length) {
+    const list = document.createElement("ul");
+    list.className = "polish-mistake-list";
+    feedback.mistakes.forEach((mistake) => {
+      const item = document.createElement("li");
+      item.innerHTML = `<strong>${escapeHtml(mistake.correct || "Исправление")}</strong><span>${escapeHtml(mistake.reasonRu || mistake.grammarPoint || "")}</span>`;
+      list.append(item);
+    });
+    els.englishTrainerFeedback.append(list);
+  }
+  if (feedback.explanationRu) {
+    const note = document.createElement("p");
+    note.textContent = feedback.explanationRu;
+    els.englishTrainerFeedback.append(note);
+  }
+}
+
+async function checkEnglishTrainerAnswer() {
+  const exercise = normalizeEnglishTrainerExercise(state.englishTrainer.currentExercise || {});
+  const answer = normalizeFreeText(els.englishTrainerAnswerInput.value, 320);
+  if (!exercise) {
+    setEnglishTrainerStatus("Сначала создай задание.", "warn");
+    return;
+  }
+  if (!answer) {
+    setEnglishTrainerStatus("Напиши свой английский ответ.", "warn");
+    els.englishTrainerAnswerInput.focus();
+    return;
+  }
+
+  els.checkEnglishTrainerAnswerButton.disabled = true;
+  setEnglishTrainerStatus("AI проверяет ответ и разбирает ошибки.", "work");
+  try {
+    await updateAiStatus();
+    if (!state.deepSeekOnline) throw new Error("DEEPSEEK_API_KEY is not set");
+    const data = await requestPolishApi("/api/english/sentence-trainer/check-answer", {
+      exercise,
+      answer,
+      words: englishTrainerVocabularyForExercise(),
+    });
+    state.englishTrainer.feedback = {
+      userAnswer: answer,
+      isCorrect: Boolean(data.isCorrect),
+      score: Math.max(0, Math.min(100, Number(data.score) || 0)),
+      correctedAnswer: normalizeFreeText(data.correctedAnswer || exercise.expectedEn, 320),
+      mistakes: Array.isArray(data.mistakes) ? data.mistakes.slice(0, 8) : [],
+      explanationRu: normalizeFreeText(data.explanationRu || "", 360),
+    };
+    saveCards();
+    renderEnglishTrainer();
+    setEnglishTrainerStatus(state.englishTrainer.feedback.isCorrect ? "Ответ засчитан." : "Разбор готов.", "ok");
+  } catch (error) {
+    setEnglishTrainerStatus(`Не получилось проверить ответ: ${friendlyError(error.message)}.`, "error");
+  } finally {
+    els.checkEnglishTrainerAnswerButton.disabled = false;
+  }
+}
+
 function setLanguage(language) {
   state.language = language === "polish" ? "polish" : "english";
   localStorage.setItem(LANGUAGE_KEY, state.language);
@@ -1832,12 +2808,31 @@ function setLanguage(language) {
   els.polishModeButton.setAttribute("aria-current", state.language === "polish" ? "page" : "false");
   if (state.language === "polish") closeGoalDialog();
   else syncGoalDialog();
+  renderEnglishTrainer();
+  setEnglishPractice(state.englishPractice);
   renderPolish();
   if (state.language === "polish") window.setTimeout(() => ensurePolishExerciseQueue({ silent: true }), 300);
 }
 
 function initLanguage() {
   setLanguage(localStorage.getItem(LANGUAGE_KEY) || "english");
+}
+
+function setEnglishPractice(practice) {
+  state.englishPractice = practice === "sentences" ? "sentences" : "cards";
+  const cards = state.englishPractice === "cards";
+  els.englishCardsPractice.hidden = !cards;
+  els.englishSentencesPractice.hidden = cards;
+  els.englishCardsTab.classList.toggle("is-active", cards);
+  els.englishSentencesTab.classList.toggle("is-active", !cards);
+  els.englishCardsTab.setAttribute("aria-pressed", String(cards));
+  els.englishSentencesTab.setAttribute("aria-pressed", String(!cards));
+  if (!cards) renderEnglishTrainer();
+}
+
+function openCreatorDialog() {
+  closeDeckDialog();
+  openAppDialog(els.cardCreatorDialog);
 }
 
 function parsePolishWordLines(text) {
@@ -1852,7 +2847,7 @@ function parsePolishWordLines(text) {
       return normalizePolishWordEntry({
         word,
         translation,
-        partOfSpeech: word.includes(" ") ? "phrase" : "",
+        partOfSpeech: word.includes(" ") ? "phrase" : inferPolishPartOfSpeech(word),
         level: "A1",
         notes: word.includes(" ") ? "устойчивое выражение" : "",
       });
@@ -1867,6 +2862,10 @@ function shouldExtractPolishWordsWithAi(text = "") {
   const hasSentencePunctuation = /[.!?]/.test(cleanText);
   const hasLongLine = lines.some((line) => line.split(/\s+/).length >= 4 && !/\s[-–—:]\s/.test(line));
   return hasSentencePunctuation || hasLongLine;
+}
+
+function polishWordsNeedAiDetails(words = []) {
+  return words.some((word) => !word.translation || !word.partOfSpeech);
 }
 
 function formatPolishWordsForInput(words = []) {
@@ -1905,7 +2904,7 @@ async function addPolishWordsFromInput() {
 
   els.addPolishWordsButton.disabled = true;
   try {
-    if (shouldExtractPolishWordsWithAi(text)) {
+    if (shouldExtractPolishWordsWithAi(text) || polishWordsNeedAiDetails(words)) {
       setPolishStatus("AI разбирает текст на полезные польские слова и связки.", "work");
       await updateAiStatus();
       if (!state.deepSeekOnline) throw new Error("DEEPSEEK_API_KEY is not set");
@@ -1941,11 +2940,28 @@ function removePolishWord(wordId) {
   setPolishStatus("Слово удалено из польской базы.", "ok");
 }
 
+function boostPolishWord(wordId) {
+  state.polish = normalizePolishState(state.polish);
+  let boostedWord = "";
+  let isBoosted = false;
+  state.polish.words = state.polish.words.map((word) => {
+    if (word.id !== wordId) return word;
+    const boostRemaining = word.boostRemaining > 0 ? 0 : 8;
+    boostedWord = word.word;
+    isBoosted = boostRemaining > 0;
+    return { ...word, boostRemaining };
+  });
+  state.polish.preparedExercises = [];
+  saveCards();
+  renderPolish();
+  setPolishStatus(isBoosted ? `${boostedWord} будет чаще попадаться в заданиях.` : `${boostedWord} снова в обычном режиме.`, "ok");
+  ensurePolishExerciseQueue({ silent: true });
+}
+
 function renderPolish() {
   if (!els.polishDictionarySummary) return;
   state.polish = normalizePolishState(state.polish);
   const wordCount = state.polish.words.length;
-  els.polishWordCount.textContent = `${wordCount} слов/фраз`;
   els.polishDictionarySummary.textContent = `${wordCount} слов/фраз · Открыть`;
   els.polishDictionaryPreview.textContent = wordCount
     ? state.polish.words.slice(0, 6).map((word) => word.word).join(", ")
@@ -1957,11 +2973,8 @@ function renderPolish() {
 }
 
 function polishWordType(word = {}) {
-  const part = String(word.partOfSpeech || "").toLowerCase();
-  if (part.includes("verb") || part.includes("глаг")) return "verb";
-  if (part.includes("noun") || part.includes("существ")) return "noun";
-  if (part.includes("phrase") || part.includes("фраз") || String(word.word || "").includes(" ")) return "phrase";
-  if (part.includes("adj") || part.includes("прилаг")) return "adjective";
+  const part = inferPolishPartOfSpeech(word.word, word.partOfSpeech);
+  if (part) return part;
   return "other";
 }
 
@@ -1971,18 +2984,20 @@ function polishWordTypeLabel(type) {
     noun: "Существительное",
     phrase: "Фраза",
     adjective: "Прилагательное",
-    other: "Другое",
-  }[type] || "Другое";
+    other: "Слово",
+  }[type] || "Слово";
 }
 
 function filteredPolishWords() {
-  const query = normalizeFreeText(els.polishDictionarySearch?.value || "", 80).toLowerCase();
+  const queryTokens = normalizeSearchText(els.polishDictionarySearch?.value || "", 120)
+    .split(/[,\s]+/)
+    .filter(Boolean);
   const filter = els.polishDictionaryFilter?.value || "all";
 
   return normalizePolishState(state.polish).words.filter((word) => {
     const type = polishWordType(word);
-    const haystack = [word.word, word.translation, word.partOfSpeech, word.gender, word.notes].join(" ").toLowerCase();
-    return (filter === "all" || type === filter) && (!query || haystack.includes(query));
+    const haystack = normalizeSearchText([word.word, word.translation, polishWordTypeLabel(type), word.partOfSpeech, word.gender, word.notes].join(" "), 500);
+    return (filter === "all" || type === filter) && (!queryTokens.length || queryTokens.every((token) => haystack.includes(token)));
   });
 }
 
@@ -2005,18 +3020,27 @@ function renderPolishDictionary() {
     const row = document.createElement("article");
     row.className = "polish-dictionary-row";
     const type = polishWordType(word);
+    const boostRemaining = Math.max(0, Number(word.boostRemaining) || 0);
+    row.classList.toggle("is-boosted", boostRemaining > 0);
     row.innerHTML = `
       <div>
         <h3>${escapeHtml(word.word)}</h3>
-        <p>${escapeHtml([word.translation, polishWordTypeLabel(type), word.gender].filter(Boolean).join(" · "))}</p>
+        <p>${escapeHtml([word.translation || "перевод не добавлен", polishWordTypeLabel(type), word.gender, boostRemaining ? `чаще: ${boostRemaining}` : ""].filter(Boolean).join(" · "))}</p>
       </div>
     `;
+    const boostButton = document.createElement("button");
+    boostButton.type = "button";
+    boostButton.className = "priority-word-button";
+    boostButton.setAttribute("aria-label", boostRemaining ? `Убрать частое повторение слова ${word.word}` : `Повторять чаще слово ${word.word}`);
+    boostButton.textContent = boostRemaining ? "★" : "☆";
+    boostButton.addEventListener("click", () => boostPolishWord(word.id));
     const deleteButton = document.createElement("button");
     deleteButton.type = "button";
     deleteButton.className = "delete-card-button";
     deleteButton.setAttribute("aria-label", `Удалить слово ${word.word}`);
     deleteButton.textContent = "×";
     deleteButton.addEventListener("click", () => removePolishWord(word.id));
+    row.append(boostButton);
     row.append(deleteButton);
     els.polishDictionaryList.append(row);
   });
@@ -2032,6 +3056,63 @@ function closePolishDictionary() {
   closeAppDialog(els.polishDictionaryDialog);
 }
 
+function openPolishTextDialog() {
+  openAppDialog(els.polishTextDialog);
+  window.setTimeout(() => els.polishManualPromptInput?.focus(), 80);
+}
+
+function closePolishTextDialog() {
+  closeAppDialog(els.polishTextDialog);
+}
+
+async function startPolishManualPrompt() {
+  const promptRu = normalizeFreeText(els.polishManualPromptInput.value, 620);
+  if (!promptRu) {
+    setPolishStatus("Напиши русский текст для перевода.", "warn");
+    els.polishManualPromptInput.focus();
+    return;
+  }
+
+  els.startPolishManualPromptButton.disabled = true;
+  setPolishStatus("AI готовит подсказки к твоему тексту.", "work");
+  try {
+    await updateAiStatus();
+    if (!state.deepSeekOnline) throw new Error("DEEPSEEK_API_KEY is not set");
+    const data = await requestPolishApi("/api/polish/prepare-manual", {
+      promptRu,
+      words: state.polish.words,
+    });
+    activatePolishExercise({
+      ...(data.exercise || {}),
+      promptRu,
+      mode: "manual",
+      targetCount: 10,
+    });
+    state.polishHintVisible = true;
+    state.polishUsedWordsVisible = true;
+    renderPolishExercise();
+    setPolishStatus("Свой текст готов с подсказками. Напиши ответ по-польски.", "ok");
+  } catch (error) {
+    activatePolishExercise({
+      promptRu,
+      expectedPl: "",
+      hint: "Сначала переведи сам. AI проверит ответ и предложит правильный польский вариант.",
+      mode: "manual",
+      targetCount: 10,
+      usedWords: [],
+      grammarFocus: ["свой текст"],
+    });
+    state.polishHintVisible = true;
+    renderPolishExercise();
+    setPolishStatus(`Свой текст создан без AI-подсказок: ${friendlyError(error.message)}.`, "warn");
+  } finally {
+    els.startPolishManualPromptButton.disabled = false;
+    els.polishManualPromptInput.value = "";
+    closePolishTextDialog();
+    els.polishAnswerInput.focus();
+  }
+}
+
 function renderPolishExercise() {
   const exercise = normalizePolishExercise(state.polish.currentExercise || {});
   els.polishExerciseCard.hidden = !exercise;
@@ -2044,6 +3125,10 @@ function renderPolishExercise() {
   els.polishExerciseHint.setAttribute("tabindex", "0");
   els.polishExerciseHint.setAttribute("aria-label", state.polishHintVisible ? "Скрыть подсказку" : "Показать подсказку");
   els.polishUsedWords.replaceChildren();
+  els.polishUsedWords.classList.toggle("is-hidden", !state.polishUsedWordsVisible);
+  els.polishUsedWords.setAttribute("role", "button");
+  els.polishUsedWords.setAttribute("tabindex", "0");
+  els.polishUsedWords.setAttribute("aria-label", state.polishUsedWordsVisible ? "Скрыть слова-подсказки" : "Показать слова-подсказки");
   exercise.usedWords.forEach((word) => {
     const chip = document.createElement("span");
     chip.className = "polish-used-chip";
@@ -2055,6 +3140,12 @@ function renderPolishExercise() {
 function togglePolishHint() {
   if (!normalizePolishExercise(state.polish.currentExercise || {})) return;
   state.polishHintVisible = !state.polishHintVisible;
+  renderPolishExercise();
+}
+
+function togglePolishUsedWords() {
+  if (!normalizePolishExercise(state.polish.currentExercise || {})) return;
+  state.polishUsedWordsVisible = !state.polishUsedWordsVisible;
   renderPolishExercise();
 }
 
@@ -2200,9 +3291,22 @@ function recentPolishExercisesForAi() {
     }));
 }
 
+function polishVocabularyForExercise() {
+  state.polish = normalizePolishState(state.polish);
+  const words = [...state.polish.words];
+  const boosted = words
+    .filter((word) => (Number(word.boostRemaining) || 0) > 0)
+    .sort((left, right) => (right.boostRemaining || 0) - (left.boostRemaining || 0));
+  const regular = words
+    .filter((word) => !(Number(word.boostRemaining) || 0))
+    .sort(() => Math.random() - 0.5);
+  return [...boosted, ...regular].slice(0, 200);
+}
+
 async function fetchPolishExercise(count, mode) {
   const data = await requestPolishApi("/api/polish/create-exercise", {
-    words: state.polish.words.slice(0, 200),
+    words: polishVocabularyForExercise(),
+    focusWords: state.polish.words.filter((word) => (Number(word.boostRemaining) || 0) > 0).map((word) => word.word).slice(0, 12),
     count,
     mode,
     recentExercises: recentPolishExercisesForAi(),
@@ -2215,7 +3319,13 @@ function activatePolishExercise(exercise) {
   if (!normalized) throw new Error("AI returned no exercise");
   state.polish.currentExercise = normalized;
   state.polishHintVisible = false;
+  state.polishUsedWordsVisible = false;
   state.polish.feedback = null;
+  const usedKeys = new Set(normalized.usedWords.map(polishWordKey));
+  state.polish.words = normalizePolishState(state.polish).words.map((word) => {
+    if (!usedKeys.has(polishWordKey(word.word)) || !(Number(word.boostRemaining) > 0)) return word;
+    return { ...word, boostRemaining: Math.max(0, Number(word.boostRemaining) - 1) };
+  });
   state.polish.exercises = [normalized, ...state.polish.exercises.filter((item) => item.id !== normalized.id)].slice(0, 30);
   els.polishAnswerInput.value = "";
   saveCards();
@@ -2353,7 +3463,8 @@ function startEditCard(cardId) {
   els.draftCard.hidden = true;
   state.draft = null;
   setStatus("Редактирование включено. Измени фразу или пожелания к картинке, затем создай обновление.", "work");
-  document.querySelector(".creator")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  openCreatorDialog();
+  els.manualPhraseInput.focus();
 }
 
 function cancelEdit() {
@@ -2373,6 +3484,7 @@ async function openProfile(profileId) {
     return;
   }
 
+  state.profileSyncReady = false;
   rememberProfileId(cleanProfileId);
   loadLocalCards();
   renderStudy(0);
@@ -2382,6 +3494,7 @@ async function openProfile(profileId) {
   try {
     await loadServerCards();
   } catch {
+    await loadOfflineStarterCards();
     setStatus("Профиль открыт локально. Сервер синхронизации недоступен.", "warn");
   }
   closeSettingsDialog();
@@ -2684,7 +3797,6 @@ async function findSongWithAi() {
   }
 
   els.songLyricsLink.disabled = true;
-  els.songSearchButton.disabled = true;
   setSongStatus("Ищу песню через AI. Полный текст песни не запрашиваю.", "work");
 
   try {
@@ -2707,7 +3819,6 @@ async function findSongWithAi() {
     setSongStatus(`Не получилось найти песню: ${friendlyError(error.message)}.`, "error");
   } finally {
     els.songLyricsLink.disabled = false;
-    els.songSearchButton.disabled = false;
   }
 }
 
@@ -2825,15 +3936,35 @@ els.cardTranslation.addEventListener("keydown", (event) => {
   toggleTranslation(event);
 });
 els.flashcard.addEventListener("click", flipCard);
+els.studyModeButtons.forEach((button) => button.addEventListener("click", () => setStudyMode(button.dataset.studyMode)));
+els.flashcard.addEventListener("keydown", (event) => {
+  if (event.target !== els.flashcard || !["Enter", " "].includes(event.key)) return;
+  event.preventDefault();
+  flipCard();
+});
 els.againButton.addEventListener("click", () => rateCard(false));
 els.gotItButton.addEventListener("click", () => rateCard(true));
 els.flashcard.addEventListener("pointerdown", startSwipe);
-els.flashcard.addEventListener("pointermove", moveSwipe);
 els.flashcard.addEventListener("pointerup", finishSwipe);
 els.flashcard.addEventListener("pointercancel", cancelSwipe);
 els.flashcard.addEventListener("lostpointercapture", cancelSwipe);
 window.addEventListener("pointerup", finishSwipe);
 window.addEventListener("pointercancel", cancelSwipe);
+window.addEventListener("pointermove", moveSwipe, { passive: false });
+els.flashcard.addEventListener("touchstart", startTouchSwipe, { passive: true });
+window.addEventListener("touchstart", (event) => {
+  if (event.touches.length > 1 && state.drag?.input === "touch") {
+    state.drag.moved = true;
+    cancelSwipe();
+  }
+}, { passive: true });
+els.flashcard.addEventListener("touchmove", moveTouchSwipe, { passive: false });
+els.flashcard.addEventListener("touchend", finishTouchSwipe, { passive: true });
+els.flashcard.addEventListener("touchcancel", () => {
+  if (state.drag?.input === "touch") cancelSwipe();
+}, { passive: true });
+window.addEventListener("blur", cancelSwipe);
+els.flashcard.addEventListener("dragstart", (event) => event.preventDefault());
 els.loadProfileButton.addEventListener("click", () => openProfile(els.profileInput.value));
 els.newProfileButton.addEventListener("click", createNewProfile);
 els.createFolderButton.addEventListener("click", createFolder);
@@ -2856,7 +3987,15 @@ els.settingsDialog.addEventListener("click", (event) => {
   if (event.target === els.settingsDialog) closeSettingsDialog();
 });
 els.openDeckButton.addEventListener("click", openDeckDialog);
-els.openDeckSummaryButton.addEventListener("click", openDeckDialog);
+els.openStudyFoldersButton.addEventListener("click", openDeckDialog);
+els.startBasicActionsButton.addEventListener("click", startBasicActions);
+els.openCreatorButton.addEventListener("click", openCreatorDialog);
+els.closeCreatorButton.addEventListener("click", () => closeAppDialog(els.cardCreatorDialog));
+els.cardCreatorDialog.addEventListener("click", (event) => {
+  if (event.target === els.cardCreatorDialog) closeAppDialog(els.cardCreatorDialog);
+});
+els.englishCardsTab.addEventListener("click", () => setEnglishPractice("cards"));
+els.englishSentencesTab.addEventListener("click", () => setEnglishPractice("sentences"));
 els.closeDeckButton.addEventListener("click", closeDeckDialog);
 els.selectCardsButton.addEventListener("click", () => setSelectionMode(!state.selectionMode));
 els.cancelSelectionButton.addEventListener("click", () => setSelectionMode(false));
@@ -2868,10 +4007,6 @@ els.deckDialog.addEventListener("click", (event) => {
   if (event.target === els.deckDialog) closeDeckDialog();
 });
 els.openSongButton.addEventListener("click", openSongDialog);
-els.songSearchButton.addEventListener("click", () => {
-  openSongDialog();
-  els.songTitleInput.focus();
-});
 els.songLyricsLink.addEventListener("click", findSongWithAi);
 els.songTitleInput.addEventListener("input", () => {
   syncSongFolderFromTitle();
@@ -2909,6 +4044,42 @@ els.installButton.addEventListener("click", async () => {
 
 els.englishModeButton.addEventListener("click", () => setLanguage("english"));
 els.polishModeButton.addEventListener("click", () => setLanguage("polish"));
+els.addEnglishTrainerWordsButton.addEventListener("click", addEnglishTrainerWordsFromInput);
+els.suggestEnglishTrainerWordsButton.addEventListener("click", suggestEnglishTrainerWords);
+els.openEnglishTrainerDictionaryButton.addEventListener("click", openEnglishTrainerDictionary);
+els.closeEnglishTrainerDictionaryButton.addEventListener("click", closeEnglishTrainerDictionary);
+els.englishTrainerDictionarySearch.addEventListener("input", renderEnglishTrainerDictionary);
+els.englishTrainerDictionaryFilter.addEventListener("change", renderEnglishTrainerDictionary);
+els.englishTrainerDictionaryDialog.addEventListener("click", (event) => {
+  if (event.target === els.englishTrainerDictionaryDialog) closeEnglishTrainerDictionary();
+});
+els.createEnglishTrainerExerciseButton.addEventListener("click", createEnglishTrainerExercise);
+els.englishTrainerFolderSelect.addEventListener("change", changeEnglishTrainerFolder);
+els.openEnglishTrainerTextButton.addEventListener("click", openEnglishTrainerTextDialog);
+els.closeEnglishTrainerTextButton.addEventListener("click", closeEnglishTrainerTextDialog);
+els.startEnglishTrainerManualPromptButton.addEventListener("click", startEnglishTrainerManualPrompt);
+els.englishTrainerTextDialog.addEventListener("click", (event) => {
+  if (event.target === els.englishTrainerTextDialog) closeEnglishTrainerTextDialog();
+});
+els.checkEnglishTrainerAnswerButton.addEventListener("click", checkEnglishTrainerAnswer);
+els.englishTrainerExerciseHint.addEventListener("click", toggleEnglishTrainerHint);
+els.englishTrainerExerciseHint.addEventListener("keydown", (event) => {
+  if (!["Enter", " "].includes(event.key)) return;
+  event.preventDefault();
+  toggleEnglishTrainerHint();
+});
+els.englishTrainerUsedWords.addEventListener("click", toggleEnglishTrainerUsedWords);
+els.englishTrainerUsedWords.addEventListener("keydown", (event) => {
+  if (!["Enter", " "].includes(event.key)) return;
+  event.preventDefault();
+  toggleEnglishTrainerUsedWords();
+});
+els.openPolishTextButton.addEventListener("click", openPolishTextDialog);
+els.closePolishTextButton.addEventListener("click", closePolishTextDialog);
+els.startPolishManualPromptButton.addEventListener("click", startPolishManualPrompt);
+els.polishTextDialog.addEventListener("click", (event) => {
+  if (event.target === els.polishTextDialog) closePolishTextDialog();
+});
 els.addPolishWordsButton.addEventListener("click", addPolishWordsFromInput);
 els.suggestPolishWordsButton.addEventListener("click", suggestPolishWords);
 els.openPolishDictionaryButton.addEventListener("click", openPolishDictionary);
@@ -2940,6 +4111,12 @@ els.polishExerciseHint.addEventListener("keydown", (event) => {
   event.preventDefault();
   togglePolishHint();
 });
+els.polishUsedWords.addEventListener("click", togglePolishUsedWords);
+els.polishUsedWords.addEventListener("keydown", (event) => {
+  if (!["Enter", " "].includes(event.key)) return;
+  event.preventDefault();
+  togglePolishUsedWords();
+});
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js"));
@@ -2949,9 +4126,10 @@ initProfile();
 initLanguage();
 loadLocalCards();
 renderStudy(0);
+renderEnglishTrainer();
 renderPolish();
 syncGoalDialog();
-loadServerCards().catch(() => {});
+loadServerCards().catch(loadOfflineStarterCards);
 updateAiStatus();
 updateSpeechControls();
 updatePhraseMode();

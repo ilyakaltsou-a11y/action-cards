@@ -1,4 +1,4 @@
-const CACHE_NAME = "action-cards:v52";
+const CACHE_NAME = "action-cards:v65";
 const ASSETS = [
   "./",
   "./index.html",
@@ -7,6 +7,7 @@ const ASSETS = [
   "./default-cards.json",
   "./manifest.webmanifest",
   "./icon.svg",
+  "./assets/icons.svg",
 ];
 const ASSET_SET = new Set(ASSETS);
 
@@ -46,5 +47,5 @@ function isStaticAssetRequest(request) {
   if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/images/")) return false;
 
   const assetPath = url.pathname === "/" ? "./" : `.${url.pathname}`;
-  return ASSET_SET.has(assetPath);
+  return ASSET_SET.has(assetPath) || url.pathname.startsWith("/assets/");
 }

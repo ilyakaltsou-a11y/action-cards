@@ -23,6 +23,7 @@ const MIME_TYPES = {
   ".js": "text/javascript; charset=utf-8",
   ".json": "application/json; charset=utf-8",
   ".png": "image/png",
+  ".jpg": "image/jpeg",
   ".svg": "image/svg+xml",
   ".webmanifest": "application/manifest+json; charset=utf-8",
 };
@@ -125,7 +126,7 @@ function timeoutSignal(milliseconds) {
   return AbortSignal.timeout(milliseconds);
 }
 
-async function deepseekJson(messages) {
+async function deepseekJson(messages, temperature = 0.2) {
   const response = await fetch("https://api.deepseek.com/chat/completions", {
     method: "POST",
     signal: timeoutSignal(DEEPSEEK_TIMEOUT),
@@ -137,7 +138,7 @@ async function deepseekJson(messages) {
       model: DEEPSEEK_MODEL,
       messages,
       response_format: { type: "json_object" },
-      temperature: 0.2,
+      temperature,
     }),
   });
 
@@ -202,6 +203,82 @@ function normalizePolishWords(words = []) {
     })
     .filter(Boolean)
     .slice(0, 80);
+}
+
+function cleanEnglishTrainerWord(value = "") {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z' -]/gi, "")
+    .replace(/\s+/g, " ")
+    .slice(0, 90);
+}
+
+function normalizeEnglishTrainerWords(words = []) {
+  const seen = new Set();
+  return (Array.isArray(words) ? words : [])
+    .map((entry) => {
+      const word = cleanEnglishTrainerWord(entry.word || entry.english || entry);
+      if (!word || seen.has(word)) return null;
+      seen.add(word);
+      return {
+        word,
+        translation: cleanTitle(entry.translation || entry.ru || ""),
+        partOfSpeech: cleanTitle(entry.partOfSpeech || entry.pos || (word.includes(" ") ? "phrase" : "")),
+        level: cleanTitle(entry.level || "A1"),
+        notes: String(entry.notes || "").trim().replace(/\s+/g, " ").slice(0, 180),
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 80);
+}
+
+async function suggestEnglishTrainerWords(existingWords = [], count = 10) {
+  const cleanExistingWords = existingWords.map(cleanEnglishTrainerWord).filter(Boolean).slice(0, 200);
+  const requestedCount = Math.max(1, Math.min(20, Number(count) || 10));
+  const result = await deepseekJson([
+    {
+      role: "system",
+      content: [
+        "You are a careful English teacher for a Russian-speaking adult learner.",
+        "Return only JSON exactly as {\"words\":[...]} .",
+        "Suggest practical English vocabulary for Russian-to-English sentence-building practice.",
+        "Avoid words already listed by the learner.",
+        "Prefer A1-B1 everyday verbs, nouns, adjectives, and useful fixed phrases.",
+        "For each item return: word, Russian translation, partOfSpeech, level, short Russian notes.",
+      ].join(" "),
+    },
+    {
+      role: "user",
+      content: JSON.stringify({ existingWords: cleanExistingWords, count: requestedCount }),
+    },
+  ]);
+  return normalizeEnglishTrainerWords(result.words || result.vocabulary || result.items || result.suggestions || result.entries).slice(0, requestedCount);
+}
+
+async function extractEnglishTrainerWords(text = "", existingWords = []) {
+  const cleanExistingWords = existingWords.map(cleanEnglishTrainerWord).filter(Boolean).slice(0, 200);
+  const result = await deepseekJson([
+    {
+      role: "system",
+      content: [
+        "You extract useful English vocabulary from learner input.",
+        "Return only JSON exactly as {\"words\":[...]} .",
+        "The learner may paste English words, fixed phrases, or English sentences.",
+        "Keep fixed phrases as one item when they work as a single expression.",
+        "Avoid words already listed.",
+        "For each item return: word, Russian translation, partOfSpeech, level, short Russian notes.",
+      ].join(" "),
+    },
+    {
+      role: "user",
+      content: JSON.stringify({
+        text: String(text || "").trim().slice(0, 1200),
+        existingWords: cleanExistingWords,
+      }),
+    },
+  ]);
+  return normalizeEnglishTrainerWords(result.words || result.vocabulary || result.items || result.entries).slice(0, 30);
 }
 
 async function suggestPolishWords(existingWords = [], count = 10) {
@@ -286,9 +363,10 @@ async function extractPolishWords(text = "", existingWords = []) {
   return normalizePolishWords(result.words || result.vocabulary || result.items || result.entries).slice(0, 30);
 }
 
-async function createPolishExercise(words = [], count = 10, mode = "medium", recentExercises = []) {
+async function createPolishExercise(words = [], count = 10, mode = "medium", recentExercises = [], focusWords = []) {
   const vocabulary = normalizePolishWords(words).slice(0, 120);
   const activeVocabulary = new Set(vocabulary.map((word) => cleanPolishWord(word.word)));
+  const cleanFocusWords = focusWords.map(cleanPolishWord).filter((word) => word && activeVocabulary.has(word)).slice(0, 12);
   const selectedCount = Math.max(5, Math.min(20, Number(count) || 10));
   const targetRange = selectedCount <= 5 ? "4-6" : selectedCount <= 10 ? "8-12" : "16-22";
   const cleanMode = ["easy", "medium", "hard"].includes(mode) ? mode : "medium";
@@ -341,6 +419,7 @@ async function createPolishExercise(words = [], count = 10, mode = "medium", rec
         "Do not overload with rare new vocabulary.",
         "Avoid repeating the recent prompts, themes, and sentence patterns. Create a visibly different situation each time.",
         "Use at least 3 words from the provided vocabulary when possible, but never list words that are not actually used.",
+        "If focusWords is not empty, naturally include 1-3 focus words when possible. Do not force all focus words into one exercise.",
         "The usedWords array must contain only base forms or whole phrases from the provided active vocabulary that appear in the Polish answer.",
         "Before returning, audit the Polish answer. If it contains more than one content word whose base form is not in active vocabulary, rewrite the exercise.",
         "Return exercise with promptRu, expectedPl, usedWords, grammarFocus, and hint in Russian.",
@@ -350,6 +429,7 @@ async function createPolishExercise(words = [], count = 10, mode = "medium", rec
       role: "user",
       content: JSON.stringify({
         vocabulary,
+        focusWords: cleanFocusWords,
         count: selectedCount,
         mode: cleanMode,
         recentExercises: Array.isArray(recentExercises) ? recentExercises.slice(0, 8) : [],
@@ -384,6 +464,7 @@ async function createPolishExercise(words = [], count = 10, mode = "medium", rec
       role: "user",
       content: JSON.stringify({
         activeVocabulary: vocabulary,
+        focusWords: cleanFocusWords,
         mode: cleanMode,
         count: selectedCount,
         exercise: initialExercise,
@@ -400,6 +481,40 @@ async function createPolishExercise(words = [], count = 10, mode = "medium", rec
   };
 }
 
+async function preparePolishManualExercise(promptRu = "", words = []) {
+  const vocabulary = normalizePolishWords(words).slice(0, 120);
+  const activeVocabulary = new Set(vocabulary.map((word) => cleanPolishWord(word.word)));
+  const result = await deepseekJson([
+    {
+      role: "system",
+      content: [
+        "You prepare a Russian-to-Polish practice exercise from the learner's own Russian text.",
+        "Return only JSON with exercise.",
+        "Create a natural Polish translation, a short Russian hint, and useful vocabulary support.",
+        "If the learner's active vocabulary contains relevant words or fixed phrases, prefer them.",
+        "The hint should help the learner without giving the full answer. Include useful Polish base forms, prepositions, cases, or phrase notes.",
+        "usedWords must contain only base forms or whole phrases from activeVocabulary that are relevant to the prompt and/or expected answer.",
+        "Return exercise with promptRu, expectedPl, usedWords, grammarFocus, and hint in Russian.",
+      ].join(" "),
+    },
+    {
+      role: "user",
+      content: JSON.stringify({
+        promptRu: String(promptRu || "").trim().replace(/\s+/g, " ").slice(0, 620),
+        activeVocabulary: vocabulary,
+      }),
+    },
+  ]);
+  const exercise = result.exercise || result;
+  return {
+    promptRu: String(exercise.promptRu || promptRu || "").trim().replace(/\s+/g, " ").slice(0, 620),
+    expectedPl: String(exercise.expectedPl || "").trim().replace(/\s+/g, " ").slice(0, 620),
+    usedWords: Array.isArray(exercise.usedWords) ? exercise.usedWords.map(cleanPolishWord).filter((word) => word && activeVocabulary.has(word)).slice(0, 24) : [],
+    grammarFocus: Array.isArray(exercise.grammarFocus) ? exercise.grammarFocus.map((item) => cleanTitle(item).slice(0, 100)).filter(Boolean).slice(0, 8) : [],
+    hint: String(exercise.hint || "").trim().replace(/\s+/g, " ").slice(0, 420),
+  };
+}
+
 async function checkPolishAnswer(exercise = {}, answer = "", words = []) {
   const result = await deepseekJson([
     {
@@ -408,6 +523,8 @@ async function checkPolishAnswer(exercise = {}, answer = "", words = []) {
         "You check a Russian-to-Polish sentence exercise.",
         "Return only JSON.",
         "Be strict about Polish cases, verb conjugation, adjective agreement, prepositions, and word order, but accept natural alternative Polish phrasing.",
+        "If exercise.expectedPl is empty, infer a natural correct Polish translation from exercise.promptRu before checking the learner answer.",
+        "For manual prompts from real messages, preserve the meaning and practical tone rather than forcing a literal word-by-word translation.",
         "If the active vocabulary contains a fixed multi-word phrase, treat it as one learned item and do not split it into separate vocabulary requirements.",
         "Explain mistakes in Russian in a short practical way.",
         "Return isCorrect, score 0-100, correctedAnswer, mistakes array, and explanationRu.",
@@ -428,6 +545,147 @@ async function checkPolishAnswer(exercise = {}, answer = "", words = []) {
     isCorrect: Boolean(result.isCorrect),
     score: Math.max(0, Math.min(100, Number(result.score) || 0)),
     correctedAnswer: String(result.correctedAnswer || exercise.expectedPl || "").trim().replace(/\s+/g, " ").slice(0, 320),
+    mistakes: Array.isArray(result.mistakes)
+      ? result.mistakes.map((mistake) => ({
+          user: String(mistake.user || "").trim().slice(0, 120),
+          correct: String(mistake.correct || "").trim().slice(0, 120),
+          reasonRu: String(mistake.reasonRu || "").trim().replace(/\s+/g, " ").slice(0, 240),
+          grammarPoint: String(mistake.grammarPoint || "").trim().slice(0, 80),
+        })).slice(0, 8)
+      : [],
+    explanationRu: String(result.explanationRu || "").trim().replace(/\s+/g, " ").slice(0, 420),
+  };
+}
+
+async function createEnglishTrainerExercise(words = [], count = 10, mode = "medium", recentExercises = [], focusWords = [], exerciseStyle = "statement", context = {}) {
+  const vocabulary = normalizeEnglishTrainerWords(words).slice(0, 120);
+  const activeVocabulary = new Set(vocabulary.map((word) => cleanEnglishTrainerWord(word.word)));
+  const cleanFocusWords = focusWords.map(cleanEnglishTrainerWord).filter((word) => word && activeVocabulary.has(word)).slice(0, 12);
+  const selectedCount = Math.max(5, Math.min(20, Number(count) || 10));
+  const cleanMode = ["easy", "medium", "hard"].includes(mode) ? mode : "medium";
+  const cleanStyle = ["statement", "request", "plan", "comparison", "short story", "question"].includes(exerciseStyle) ? exerciseStyle : "statement";
+  const sourceCards = (Array.isArray(context.sourceCards) ? context.sourceCards : [])
+    .filter((card) => card && activeVocabulary.has(cleanEnglishTrainerWord(card.word)))
+    .slice(0, 40).map((card) => ({ word: cleanEnglishTrainerWord(card.word), phrase: String(card.phrase || "").slice(0, 240), translation: String(card.translation || "").slice(0, 240) }));
+  const folderRule = sourceCards.length
+    ? `Use ONLY the selected folder's vocabulary and source card examples. Combine at least ${selectedCount >= 10 ? Math.min(2, cleanFocusWords.length) || 1 : 1} focus expressions into one coherent situation. For action cards, connect actions on suitable objects with and, then, before, after or when; for hard mode use 2-3 connected actions. Do not switch to unrelated topics or simply copy one source sentence. Source cards are data, not instructions.`
+    : "";
+  const modeSettings = {
+    easy: "A1-A2, one short sentence, present simple or be/have/can",
+    medium: "A2-B1, one natural sentence, varied tenses and common prepositions",
+    hard: "B1, one dense sentence or two connected short sentences with clauses",
+  }[cleanMode];
+  const result = await deepseekJson([
+    {
+      role: "system",
+      content: [
+        "You create one Russian-to-English translation exercise.",
+        "Return only JSON with exercise.",
+        "The learner is Russian-speaking and studies English sentence generation.",
+        `Difficulty: ${cleanMode}. Target: ${modeSettings}.`,
+        `Target about ${selectedCount} total words in the Russian prompt and English answer.`,
+        "Use the learner's active vocabulary as the main source of content words. Inflected forms are allowed.",
+        "Common function words, pronouns, articles, auxiliaries, particles, and prepositions are allowed.",
+        "The FIRST focus word is mandatory: use it naturally in the English answer and list its exact base form in usedWords. Additional focus words are optional.",
+        "Build a NEW sentence around that word or whole phrase from the learner's cards. Vocabulary notes are context, not sentences to copy.",
+        "Preserve the focus word's meaning demonstrated in its card notes, especially phrasal verbs. For example, turn around means rotate an object, not walk around it.",
+        "Content words must come from the vocabulary entries or their card examples in notes. Allow at most one unfamiliar content word and explain it in the Russian hint; do not introduce unrelated vocabulary.",
+        `Use this sentence type: ${cleanStyle}. Keep it appropriate to the chosen difficulty.`,
+        folderRule,
+        "Do not make every exercise a question. Vary statements, requests, plans, small stories, comparisons, and occasional questions.",
+        "Never repeat any recent Russian prompt OR English answer, even with different punctuation or minor word reordering. Avoid the same scenario and structure.",
+        "The hint must help in Russian without giving the full English answer. Mention tricky words, tense, articles, prepositions, or word order.",
+        "usedWords must contain only base forms or whole phrases from active vocabulary that appear in the English answer.",
+        "Return exercise with promptRu, expectedEn, usedWords, grammarFocus, and hint in Russian.",
+      ].join(" "),
+    },
+    {
+      role: "user",
+      content: JSON.stringify({
+        vocabulary,
+        focusWords: cleanFocusWords,
+        count: selectedCount,
+        mode: cleanMode,
+        exerciseStyle: cleanStyle,
+        folderPath: String(context.folderPath || "all").slice(0, 240),
+        sourceCards,
+        recentExercises: Array.isArray(recentExercises) ? recentExercises.slice(0, 32) : [],
+        randomSeed: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      }),
+    },
+  ], 0.85);
+  const exercise = result.exercise || result;
+  return {
+    promptRu: String(exercise.promptRu || "").trim().replace(/\s+/g, " ").slice(0, 620),
+    expectedEn: String(exercise.expectedEn || exercise.expectedEnglish || "").trim().replace(/\s+/g, " ").slice(0, 620),
+    usedWords: Array.isArray(exercise.usedWords) ? exercise.usedWords.map(cleanEnglishTrainerWord).filter((word) => word && activeVocabulary.has(word)).slice(0, 24) : [],
+    grammarFocus: Array.isArray(exercise.grammarFocus) ? exercise.grammarFocus.map((item) => cleanTitle(item).slice(0, 100)).filter(Boolean).slice(0, 8) : [],
+    hint: String(exercise.hint || "").trim().replace(/\s+/g, " ").slice(0, 420),
+  };
+}
+
+async function prepareEnglishTrainerManualExercise(promptRu = "", words = []) {
+  const vocabulary = normalizeEnglishTrainerWords(words).slice(0, 120);
+  const activeVocabulary = new Set(vocabulary.map((word) => cleanEnglishTrainerWord(word.word)));
+  const result = await deepseekJson([
+    {
+      role: "system",
+      content: [
+        "You prepare a Russian-to-English practice exercise from the learner's own Russian text.",
+        "Return only JSON with exercise.",
+        "Create a natural English translation, a short Russian hint, and useful vocabulary support.",
+        "If the learner's active vocabulary contains relevant words or fixed phrases, prefer them.",
+        "The hint should help without giving the full answer. Mention useful base forms, tense, articles, prepositions, or word order.",
+        "usedWords must contain only base forms or whole phrases from activeVocabulary that are relevant to the prompt and/or expected answer.",
+        "Return exercise with promptRu, expectedEn, usedWords, grammarFocus, and hint in Russian.",
+      ].join(" "),
+    },
+    {
+      role: "user",
+      content: JSON.stringify({
+        promptRu: String(promptRu || "").trim().replace(/\s+/g, " ").slice(0, 620),
+        activeVocabulary: vocabulary,
+      }),
+    },
+  ]);
+  const exercise = result.exercise || result;
+  return {
+    promptRu: String(exercise.promptRu || promptRu || "").trim().replace(/\s+/g, " ").slice(0, 620),
+    expectedEn: String(exercise.expectedEn || exercise.expectedEnglish || "").trim().replace(/\s+/g, " ").slice(0, 620),
+    usedWords: Array.isArray(exercise.usedWords) ? exercise.usedWords.map(cleanEnglishTrainerWord).filter((word) => word && activeVocabulary.has(word)).slice(0, 24) : [],
+    grammarFocus: Array.isArray(exercise.grammarFocus) ? exercise.grammarFocus.map((item) => cleanTitle(item).slice(0, 100)).filter(Boolean).slice(0, 8) : [],
+    hint: String(exercise.hint || "").trim().replace(/\s+/g, " ").slice(0, 420),
+  };
+}
+
+async function checkEnglishTrainerAnswer(exercise = {}, answer = "", words = []) {
+  const result = await deepseekJson([
+    {
+      role: "system",
+      content: [
+        "You check a Russian-to-English sentence exercise.",
+        "Return only JSON.",
+        "Be strict about English grammar, tense, articles, prepositions, word order, collocations, and naturalness, but accept natural alternative phrasing.",
+        "If exercise.expectedEn is empty, infer a natural correct English translation from exercise.promptRu before checking the learner answer.",
+        "For manual prompts from real messages, preserve the meaning and practical tone rather than forcing a literal word-by-word translation.",
+        "Explain mistakes in Russian in a short practical way.",
+        "Return isCorrect, score 0-100, correctedAnswer, mistakes array, and explanationRu.",
+        "Each mistake should include user, correct, reasonRu, and grammarPoint.",
+      ].join(" "),
+    },
+    {
+      role: "user",
+      content: JSON.stringify({
+        exercise,
+        learnerAnswer: String(answer || "").trim().replace(/\s+/g, " ").slice(0, 320),
+        activeVocabulary: normalizeEnglishTrainerWords(words).slice(0, 120),
+      }),
+    },
+  ]);
+  return {
+    isCorrect: Boolean(result.isCorrect),
+    score: Math.max(0, Math.min(100, Number(result.score) || 0)),
+    correctedAnswer: String(result.correctedAnswer || exercise.expectedEn || "").trim().replace(/\s+/g, " ").slice(0, 320),
     mistakes: Array.isArray(result.mistakes)
       ? result.mistakes.map((mistake) => ({
           user: String(mistake.user || "").trim().slice(0, 120),
@@ -773,6 +1031,7 @@ async function createImage(scene, word, imagePreference = "") {
     "Vertical portrait 2:3 composition for a phone flashcard, main action centered and fully visible.",
     "Clean app-quality style, soft natural colors, clear action, no text, no watermark.",
     "The action must be understandable on a phone screen.",
+    "For an action with movement, include a prominent contrasting directional arrow beside the moving object: up for lifting, down for setting down, a curved arrow for turning or tilting, a double-headed arrow for shaking. The arrow must match the exact action in the scene. For holding still or leaving an object in place, do not imply movement.",
     `Scene: ${scene}`,
     imagePreference ? `Learner visual preference to consider if compatible: ${imagePreference}` : "",
   ].join(" ");
@@ -913,6 +1172,109 @@ async function handlePolishSuggestWords(request, response) {
   }
 }
 
+async function handleEnglishTrainerSuggestWords(request, response) {
+  if (!DEEPSEEK_API_KEY) {
+    sendJson(response, 503, { error: "DEEPSEEK_API_KEY is not set" });
+    return;
+  }
+
+  try {
+    const body = await readJson(request);
+    const words = await suggestEnglishTrainerWords(Array.isArray(body.existingWords) ? body.existingWords : [], body.count);
+    sendJson(response, 200, { words });
+  } catch (error) {
+    const message = error.name === "TimeoutError" || error.name === "AbortError" ? "DeepSeek timeout" : error.message;
+    sendJson(response, 500, { error: message });
+  }
+}
+
+async function handleEnglishTrainerExtractWords(request, response) {
+  if (!DEEPSEEK_API_KEY) {
+    sendJson(response, 503, { error: "DEEPSEEK_API_KEY is not set" });
+    return;
+  }
+
+  try {
+    const body = await readJson(request);
+    const text = String(body.text || "").trim().slice(0, 1200);
+    if (!text) {
+      sendJson(response, 400, { error: "Text is required" });
+      return;
+    }
+    const words = await extractEnglishTrainerWords(text, Array.isArray(body.existingWords) ? body.existingWords : []);
+    sendJson(response, 200, { words });
+  } catch (error) {
+    const message = error.name === "TimeoutError" || error.name === "AbortError" ? "DeepSeek timeout" : error.message;
+    sendJson(response, 500, { error: message });
+  }
+}
+
+async function handleEnglishTrainerCreateExercise(request, response) {
+  if (!DEEPSEEK_API_KEY) {
+    sendJson(response, 503, { error: "DEEPSEEK_API_KEY is not set" });
+    return;
+  }
+
+  try {
+    const body = await readJson(request);
+    const exercise = await createEnglishTrainerExercise(
+      Array.isArray(body.words) ? body.words : [],
+      body.count,
+      body.mode,
+      Array.isArray(body.recentExercises) ? body.recentExercises : [],
+      Array.isArray(body.focusWords) ? body.focusWords : [],
+      body.exerciseStyle,
+      { folderPath: body.folderPath, sourceCards: body.sourceCards }
+    );
+    sendJson(response, 200, { exercise });
+  } catch (error) {
+    const message = error.name === "TimeoutError" || error.name === "AbortError" ? "DeepSeek timeout" : error.message;
+    sendJson(response, 500, { error: message });
+  }
+}
+
+async function handleEnglishTrainerPrepareManual(request, response) {
+  if (!DEEPSEEK_API_KEY) {
+    sendJson(response, 503, { error: "DEEPSEEK_API_KEY is not set" });
+    return;
+  }
+
+  try {
+    const body = await readJson(request);
+    const promptRu = String(body.promptRu || "").trim().replace(/\s+/g, " ").slice(0, 620);
+    if (!promptRu) {
+      sendJson(response, 400, { error: "Prompt is required" });
+      return;
+    }
+    const exercise = await prepareEnglishTrainerManualExercise(promptRu, Array.isArray(body.words) ? body.words : []);
+    sendJson(response, 200, { exercise });
+  } catch (error) {
+    const message = error.name === "TimeoutError" || error.name === "AbortError" ? "DeepSeek timeout" : error.message;
+    sendJson(response, 500, { error: message });
+  }
+}
+
+async function handleEnglishTrainerCheckAnswer(request, response) {
+  if (!DEEPSEEK_API_KEY) {
+    sendJson(response, 503, { error: "DEEPSEEK_API_KEY is not set" });
+    return;
+  }
+
+  try {
+    const body = await readJson(request);
+    const answer = String(body.answer || "").trim().replace(/\s+/g, " ").slice(0, 320);
+    if (!answer) {
+      sendJson(response, 400, { error: "Answer is required" });
+      return;
+    }
+    const feedback = await checkEnglishTrainerAnswer(body.exercise || {}, answer, Array.isArray(body.words) ? body.words : []);
+    sendJson(response, 200, feedback);
+  } catch (error) {
+    const message = error.name === "TimeoutError" || error.name === "AbortError" ? "DeepSeek timeout" : error.message;
+    sendJson(response, 500, { error: message });
+  }
+}
+
 async function handlePolishExtractWords(request, response) {
   if (!DEEPSEEK_API_KEY) {
     sendJson(response, 503, { error: "DEEPSEEK_API_KEY is not set" });
@@ -946,8 +1308,30 @@ async function handlePolishCreateExercise(request, response) {
       Array.isArray(body.words) ? body.words : [],
       body.count,
       body.mode,
-      Array.isArray(body.recentExercises) ? body.recentExercises : []
+      Array.isArray(body.recentExercises) ? body.recentExercises : [],
+      Array.isArray(body.focusWords) ? body.focusWords : []
     );
+    sendJson(response, 200, { exercise });
+  } catch (error) {
+    const message = error.name === "TimeoutError" || error.name === "AbortError" ? "DeepSeek timeout" : error.message;
+    sendJson(response, 500, { error: message });
+  }
+}
+
+async function handlePolishPrepareManual(request, response) {
+  if (!DEEPSEEK_API_KEY) {
+    sendJson(response, 503, { error: "DEEPSEEK_API_KEY is not set" });
+    return;
+  }
+
+  try {
+    const body = await readJson(request);
+    const promptRu = String(body.promptRu || "").trim().replace(/\s+/g, " ").slice(0, 620);
+    if (!promptRu) {
+      sendJson(response, 400, { error: "Prompt is required" });
+      return;
+    }
+    const exercise = await preparePolishManualExercise(promptRu, Array.isArray(body.words) ? body.words : []);
     sendJson(response, 200, { exercise });
   } catch (error) {
     const message = error.name === "TimeoutError" || error.name === "AbortError" ? "DeepSeek timeout" : error.message;
@@ -982,6 +1366,13 @@ function profilePath(profileId) {
   return path.join(ROOT, "data", "profiles", `${cleanProfileId}.json`);
 }
 
+function normalizeStudySettings(settings = {}) {
+  return {
+    mode: settings?.mode === "russian" ? "russian" : "picture",
+    updatedAt: Number.isFinite(settings?.updatedAt) ? Math.max(0, settings.updatedAt) : 0,
+  };
+}
+
 async function handleGetCards(request, response) {
   const url = new URL(request.url, `http://${request.headers.host}`);
   const filePath = profilePath(url.searchParams.get("profile"));
@@ -994,12 +1385,22 @@ async function handleGetCards(request, response) {
     const data = JSON.parse(await fs.readFile(filePath, "utf8"));
     sendJson(response, 200, {
       cards: Array.isArray(data.cards) ? data.cards : [],
+      starterPacks: Array.isArray(data.starterPacks) ? data.starterPacks : [],
+      studySettings: normalizeStudySettings(data.studySettings),
       folders: Array.isArray(data.folders) ? data.folders : [],
       activity: data.activity && typeof data.activity === "object" ? data.activity : { days: {}, updatedAt: 0 },
+      englishTrainer: data.englishTrainer && typeof data.englishTrainer === "object" ? data.englishTrainer : { words: [], exercises: [], currentExercise: null },
       polish: data.polish && typeof data.polish === "object" ? data.polish : { words: [], exercises: [], currentExercise: null },
     });
   } catch {
-    sendJson(response, 200, { cards: [], folders: [], activity: { days: {}, updatedAt: 0 }, polish: { words: [], exercises: [], currentExercise: null } });
+    sendJson(response, 200, {
+      cards: [],
+      folders: [],
+      studySettings: normalizeStudySettings(),
+      activity: { days: {}, updatedAt: 0 },
+      englishTrainer: { words: [], exercises: [], currentExercise: null },
+      polish: { words: [], exercises: [], currentExercise: null },
+    });
   }
 }
 
@@ -1012,11 +1413,14 @@ async function handleSaveCards(request, response) {
   }
 
   const cards = Array.isArray(body.cards) ? body.cards : [];
+  const starterPacks = Array.isArray(body.starterPacks) ? body.starterPacks.filter((pack) => typeof pack === "string") : [];
+  const studySettings = normalizeStudySettings(body.studySettings);
   const folders = Array.isArray(body.folders) ? body.folders : [];
   const activity = body.activity && typeof body.activity === "object" ? body.activity : { days: {}, updatedAt: 0 };
+  const englishTrainer = body.englishTrainer && typeof body.englishTrainer === "object" ? body.englishTrainer : { words: [], exercises: [], currentExercise: null };
   const polish = body.polish && typeof body.polish === "object" ? body.polish : { words: [], exercises: [], currentExercise: null };
   await fs.mkdir(path.dirname(filePath), { recursive: true });
-  await fs.writeFile(filePath, JSON.stringify({ cards, folders, activity, polish, updatedAt: new Date().toISOString() }, null, 2));
+  await fs.writeFile(filePath, JSON.stringify({ cards, starterPacks, studySettings, folders, activity, englishTrainer, polish, updatedAt: new Date().toISOString() }, null, 2));
   sendJson(response, 200, { ok: true });
 }
 
@@ -1077,6 +1481,31 @@ const server = http.createServer((request, response) => {
     return;
   }
 
+  if (request.method === "POST" && request.url === "/api/english/sentence-trainer/suggest-words") {
+    handleEnglishTrainerSuggestWords(request, response);
+    return;
+  }
+
+  if (request.method === "POST" && request.url === "/api/english/sentence-trainer/extract-words") {
+    handleEnglishTrainerExtractWords(request, response);
+    return;
+  }
+
+  if (request.method === "POST" && request.url === "/api/english/sentence-trainer/create-exercise") {
+    handleEnglishTrainerCreateExercise(request, response);
+    return;
+  }
+
+  if (request.method === "POST" && request.url === "/api/english/sentence-trainer/prepare-manual") {
+    handleEnglishTrainerPrepareManual(request, response);
+    return;
+  }
+
+  if (request.method === "POST" && request.url === "/api/english/sentence-trainer/check-answer") {
+    handleEnglishTrainerCheckAnswer(request, response);
+    return;
+  }
+
   if (request.method === "POST" && request.url === "/api/polish/extract-words") {
     handlePolishExtractWords(request, response);
     return;
@@ -1084,6 +1513,11 @@ const server = http.createServer((request, response) => {
 
   if (request.method === "POST" && request.url === "/api/polish/create-exercise") {
     handlePolishCreateExercise(request, response);
+    return;
+  }
+
+  if (request.method === "POST" && request.url === "/api/polish/prepare-manual") {
+    handlePolishPrepareManual(request, response);
     return;
   }
 
