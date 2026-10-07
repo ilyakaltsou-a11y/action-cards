@@ -39,4 +39,7 @@ test(`${file}: card study mode round-trips per profile and old profiles default 
   assert.deepEqual((await call("deck-old")).studySettings, { mode: "picture", updatedAt: 0 });
   await call("deck-invalid", { studySettings: { mode: "anything", updatedAt: -5, extra: "ignored" } });
   assert.deepEqual((await call("deck-invalid")).studySettings, { mode: "picture", updatedAt: 0 });
+  const englishTrainer = { folderPath: "Actions", folderPaths: ["Actions", "Home"], folderUpdatedAt: 12345 };
+  await call("deck-folders", { englishTrainer });
+  assert.deepEqual((await call("deck-folders")).englishTrainer, englishTrainer);
 });

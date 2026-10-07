@@ -7,7 +7,7 @@ const LANGUAGE_KEY = "action-cards:language:v1";
 const POLISH_KEY = "action-cards:polish:v1";
 const ENGLISH_TRAINER_KEY = "action-cards:english-trainer:v1";
 const STUDY_SETTINGS_KEY = "action-cards:study-settings:v1";
-const DEFAULT_CARDS_URL = "default-cards.json?v=66";
+const DEFAULT_CARDS_URL = "default-cards.json?v=67";
 const STARTER_PACKS_KEY = "action-cards:starter-packs:v1";
 const BASIC_ACTIONS_PACK = "basic-actions-v1";
 const BASIC_ACTIONS_FOLDER = "Стартовые / Действия с предметами";
@@ -210,7 +210,8 @@ const els = {
   englishTrainerDictionaryList: document.querySelector("#englishTrainerDictionaryList"),
   englishTrainerExerciseCount: document.querySelector("#englishTrainerExerciseCount"),
   englishTrainerExerciseMode: document.querySelector("#englishTrainerExerciseMode"),
-  englishTrainerFolderSelect: document.querySelector("#englishTrainerFolderSelect"),
+  englishTrainerFolderChoices: document.querySelector("#englishTrainerFolderChoices"),
+  englishTrainerFolderSummary: document.querySelector("#englishTrainerFolderSummary"),
   createEnglishTrainerExerciseButton: document.querySelector("#createEnglishTrainerExerciseButton"),
   openEnglishTrainerTextButton: document.querySelector("#openEnglishTrainerTextButton"),
   englishTrainerTextDialog: document.querySelector("#englishTrainerTextDialog"),
@@ -743,6 +744,13 @@ function normalizeEnglishTrainerWordEntry(entry = {}) {
   };
 }
 
+function normalizeTrainerFolderPaths(value) {
+  const paths = [...new Set((Array.isArray(value) ? value : [value || "all"])
+    .filter((path) => typeof path === "string")
+    .map(normalizeFolderPath).filter(Boolean))].sort((left, right) => left.localeCompare(right, "ru"));
+  return paths.length && !paths.includes("all") ? paths : ["all"];
+}
+
 function normalizeEnglishTrainerExercise(exercise = {}) {
   if (!exercise.promptRu) return null;
   return {
@@ -753,6 +761,7 @@ function normalizeEnglishTrainerExercise(exercise = {}) {
     mode: ["easy", "medium", "hard", "manual"].includes(exercise.mode) ? exercise.mode : "medium",
     exerciseStyle: normalizeFreeText(exercise.exerciseStyle || "", 20),
     folderPath: normalizeFolderPath(exercise.folderPath || "all"),
+    folderPaths: normalizeTrainerFolderPaths(exercise.folderPaths ?? exercise.folderPath),
     targetCount: [5, 10, 20].includes(Number(exercise.targetCount || exercise.count)) ? Number(exercise.targetCount || exercise.count) : 10,
     usedWords: Array.isArray(exercise.usedWords) ? exercise.usedWords.map(normalizeEnglishTrainerWord).filter(Boolean).slice(0, 16) : [],
     grammarFocus: Array.isArray(exercise.grammarFocus) ? exercise.grammarFocus.map((item) => normalizeFreeText(item, 100)).filter(Boolean).slice(0, 8) : [],
@@ -775,10 +784,12 @@ function normalizeEnglishTrainerState(englishTrainer = {}) {
     ? englishTrainer.exercises.map(normalizeEnglishTrainerExercise).filter(Boolean).slice(0, 30)
     : [];
   const currentExercise = normalizeEnglishTrainerExercise(englishTrainer.currentExercise || {}) || null;
+  const folderPaths = normalizeTrainerFolderPaths(englishTrainer.folderPaths ?? englishTrainer.folderPath);
 
   return {
     words: [...wordsByKey.values()].sort((left, right) => left.word.localeCompare(right.word, "en")),
-    folderPath: normalizeFolderPath(englishTrainer.folderPath || "all"),
+    folderPath: folderPaths[0],
+    folderPaths,
     folderUpdatedAt: Number.isFinite(englishTrainer.folderUpdatedAt) ? englishTrainer.folderUpdatedAt : 0,
     excludedCardWords: [...new Set((Array.isArray(englishTrainer.excludedCardWords) ? englishTrainer.excludedCardWords : [])
       .map(englishTrainerWordKey).filter(Boolean))].sort(),
@@ -792,6 +803,7 @@ function englishTrainerSyncSignature(englishTrainer = {}) {
   const normalized = normalizeEnglishTrainerState(englishTrainer);
   return JSON.stringify({
     folderPath: normalized.folderPath,
+    folderPaths: normalized.folderPaths,
     folderUpdatedAt: normalized.folderUpdatedAt,
     excludedCardWords: normalized.excludedCardWords,
     words: normalized.words.map((word) => ({
@@ -821,8 +833,8 @@ function mergeEnglishTrainerState(serverEnglishTrainer = {}, localEnglishTrainer
   });
   return normalizeEnglishTrainerState({
     words: mergedWords,
-    folderPath: localEnglishTrainer.folderUpdatedAt > (serverEnglishTrainer.folderUpdatedAt || 0)
-      ? localEnglishTrainer.folderPath : serverEnglishTrainer.folderPath,
+    folderPaths: normalizeEnglishTrainerState(localEnglishTrainer.folderUpdatedAt > (serverEnglishTrainer.folderUpdatedAt || 0)
+      ? localEnglishTrainer : serverEnglishTrainer).folderPaths,
     folderUpdatedAt: Math.max(localEnglishTrainer.folderUpdatedAt || 0, serverEnglishTrainer.folderUpdatedAt || 0),
     excludedCardWords: [
       ...normalizeEnglishTrainerState(serverEnglishTrainer).excludedCardWords,
@@ -1898,11 +1910,13 @@ function mergeEnglishTrainerWords(words = []) {
   return words.map(normalizeEnglishTrainerWordEntry).filter(Boolean).length;
 }
 
-function englishTrainerWords(folderPath = "all") {
+function englishTrainerWords(selection = "all") {
+  const folderPaths = normalizeTrainerFolderPaths(selection);
+  const allFolders = folderPaths.includes("all");
   const trainer = normalizeEnglishTrainerState(state.englishTrainer);
-  const cards = state.cards.filter((card) => folderDescendantMatches(card, folderPath));
+  const cards = state.cards.filter((card) => folderPaths.some((folder) => folderDescendantMatches(card, folder)));
   const cardKeys = new Set(cards.map((card) => englishTrainerWordKey(card.word)));
-  const byKey = new Map(trainer.words.filter((word) => folderPath === "all" || cardKeys.has(englishTrainerWordKey(word.word)))
+  const byKey = new Map(trainer.words.filter((word) => allFolders || cardKeys.has(englishTrainerWordKey(word.word)))
     .map((word) => [englishTrainerWordKey(word.word), word]));
   const excluded = new Set(trainer.excludedCardWords);
   // Card keywords are vocabulary; the sentence translation is context, not a word translation.
@@ -1918,7 +1932,7 @@ function englishTrainerWords(folderPath = "all") {
         createdAt: card.createdAt,
       }),
       ...existing,
-      notes: (folderPath === "all" && existing?.notes) || normalizeFreeText([card.phrase, card.translation].filter(Boolean).join(" — "), 160),
+      notes: (allFolders && existing?.notes) || normalizeFreeText([card.phrase, card.translation].filter(Boolean).join(" — "), 160),
       fromCards: true,
       contextTranslation: existing?.contextTranslation || card.translation,
     });
@@ -2124,36 +2138,70 @@ function englishTrainerExerciseSettings() {
     count: Number(els.englishTrainerExerciseCount.value) || 10,
     mode: els.englishTrainerExerciseMode.value || "medium",
     folderPath: state.englishTrainer.folderPath || "all",
+    folderPaths: state.englishTrainer.folderPaths,
   };
 }
 
 function renderEnglishTrainerFolders() {
   const folders = getFolderTreePaths();
-  if (state.englishTrainer.folderPath !== "all" && !folders.includes(state.englishTrainer.folderPath)) {
-    state.englishTrainer.folderPath = "all";
+  const selected = normalizeTrainerFolderPaths(state.englishTrainer.folderPaths ?? state.englishTrainer.folderPath);
+  const valid = selected.filter((folder) => folder === "all" || folders.includes(folder));
+  if (valid.length !== selected.length) {
+    setEnglishTrainerFolders(valid);
   }
-  els.englishTrainerFolderSelect.replaceChildren();
-  for (const folder of ["all", ...folders]) {
-    const option = document.createElement("option");
-    option.value = folder;
-    option.textContent = folder === "all" ? "Все карточки и слова" : folder;
-    option.selected = folder === state.englishTrainer.folderPath;
-    els.englishTrainerFolderSelect.append(option);
+  const selection = state.englishTrainer.folderPaths;
+  els.englishTrainerFolderSummary.textContent = selection.includes("all") ? "Все карточки и слова"
+    : `Папки для предложений (${selection.length}): ${selection.map((folder) => folder.split(" / ").at(-1)).join(", ")}`;
+  els.englishTrainerFolderChoices.replaceChildren();
+  // Sort by path segments so each subtree stays together even with punctuation in names.
+  const ordered = folders.sort((left, right) => {
+    const a = left.split(" / ");
+    const b = right.split(" / ");
+    for (let index = 0; index < Math.min(a.length, b.length); index += 1) {
+      const order = a[index].localeCompare(b[index], "ru");
+      if (order) return order;
+    }
+    return a.length - b.length;
+  });
+  for (const folder of ["all", ...ordered]) {
+    const label = document.createElement("label");
+    label.style.setProperty("--folder-depth", Math.max(0, folderDepth(folder) - 1));
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.value = folder;
+    checkbox.checked = selection.includes(folder);
+    checkbox.setAttribute("aria-label", folder === "all" ? "Все карточки и слова" : folder);
+    const name = document.createElement("span");
+    name.textContent = folder === "all" ? "Все карточки и слова" : folder.split(" / ").at(-1);
+    label.append(checkbox, name);
+    els.englishTrainerFolderChoices.append(label);
   }
 }
 
-function changeEnglishTrainerFolder() {
-  state.englishTrainer.folderPath = els.englishTrainerFolderSelect.value || "all";
+function setEnglishTrainerFolders(folderPaths) {
+  state.englishTrainer.folderPaths = normalizeTrainerFolderPaths(folderPaths);
+  // Keep the single-folder field for older saved profiles and clients.
+  state.englishTrainer.folderPath = state.englishTrainer.folderPaths[0];
   state.englishTrainer.folderUpdatedAt = Date.now();
   state.englishTrainer.currentExercise = null;
   state.englishTrainer.feedback = null;
-  saveCards();
-  renderEnglishTrainer();
-  setEnglishTrainerStatus("Папка выбрана. Можно создать новое задание.", "neutral");
 }
 
-function englishTrainerVocabularyForExercise(folderPath = state.englishTrainer.folderPath || "all") {
-  const words = englishTrainerWords(folderPath);
+function changeEnglishTrainerFolder(event) {
+  const checkbox = event.target;
+  if (checkbox.type !== "checkbox" || els.englishTrainerFolderChoices.disabled) return;
+  const folder = checkbox.value;
+  const selected = state.englishTrainer.folderPaths.filter((path) => path !== "all" && path !== folder);
+  if (checkbox.checked) selected.push(folder);
+  setEnglishTrainerFolders(folder === "all" ? ["all"] : selected);
+  saveCards();
+  renderEnglishTrainer();
+  [...els.englishTrainerFolderChoices.querySelectorAll("input")].find((input) => input.value === folder)?.focus();
+  setEnglishTrainerStatus("Выбор папок сохранён.", "neutral");
+}
+
+function englishTrainerVocabularyForExercise(folderPaths = state.englishTrainer.folderPaths) {
+  const words = englishTrainerWords(folderPaths);
   const usage = new Map();
   const recent = state.englishTrainer.exercises.slice(0, 20);
   recent.forEach((exercise, index) => {
@@ -2180,24 +2228,47 @@ function recentEnglishTrainerExercisesForAi() {
     }));
 }
 
+function englishTrainerSourceCards(folderPaths, words) {
+  const rank = new Map(words.map((word, index) => [englishTrainerWordKey(word.word), index]));
+  const cards = state.cards.filter((card) => rank.has(englishTrainerWordKey(card.word)))
+    .sort((left, right) => rank.get(englishTrainerWordKey(left.word)) - rank.get(englishTrainerWordKey(right.word)));
+  const groups = folderPaths.map((folder) => cards.filter((card) => folderDescendantMatches(card, folder)));
+  const selected = new Set();
+  // Interleave folders so a large first folder cannot crowd out the others in the AI request.
+  while (selected.size < 40) {
+    let added = false;
+    for (const group of groups) {
+      while (group.length && selected.has(group[0])) group.shift();
+      if (group.length && selected.size < 40) {
+        selected.add(group.shift());
+        added = true;
+      }
+    }
+    if (!added) break;
+  }
+  return [...selected];
+}
+
 async function fetchEnglishTrainerExercise(count, mode) {
   const folderPath = state.englishTrainer.folderPath || "all";
-  const scoped = folderPath !== "all";
-  const words = englishTrainerVocabularyForExercise(folderPath);
+  const folderPaths = [...state.englishTrainer.folderPaths];
+  const scoped = !folderPaths.includes("all");
+  const words = englishTrainerVocabularyForExercise(folderPaths);
   const focusCount = scoped && count >= 10 ? Math.min(3, Math.max(2, Math.floor(count / 5))) : Math.min(3, Math.max(1, Math.floor(count / 5)));
-  const focusWords = words.slice(0, focusCount).map((word) => word.word);
-  const keys = new Set(words.map((word) => word.word));
-  const sourceCards = scoped ? state.cards.filter((card) => folderDescendantMatches(card, folderPath) && keys.has(englishTrainerWordKey(card.word)))
-    .map((card) => ({ word: card.word, phrase: card.phrase, translation: card.translation })).slice(0, 40) : [];
+  const cards = scoped ? englishTrainerSourceCards(folderPaths, words) : [];
+  const folderFocus = scoped ? folderPaths.map((folder) => cards.find((card) => folderDescendantMatches(card, folder)))
+    .filter(Boolean).map((card) => englishTrainerWordKey(card.word)) : [];
+  const focusWords = [...new Set([...folderFocus, ...words.map((word) => word.word)])].slice(0, focusCount);
+  const sourceCards = cards.map((card) => ({ word: card.word, phrase: card.phrase, translation: card.translation }));
   const recentExercises = recentEnglishTrainerExercisesForAi();
   const styles = scoped ? ["request", "plan", "short story", "statement"] : ["statement", "request", "plan", "comparison", "short story", "question"];
   const previousStyle = styles.indexOf(state.englishTrainer.currentExercise?.exerciseStyle);
   const exerciseStyle = styles[previousStyle >= 0 ? (previousStyle + 1) % styles.length : state.englishTrainer.exercises.length % styles.length];
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const data = await requestPolishApi("/api/english/sentence-trainer/create-exercise", {
-      words, focusWords, count, mode, exerciseStyle, recentExercises, folderPath, sourceCards,
+      words, focusWords, count, mode, exerciseStyle, recentExercises, folderPath, folderPaths, sourceCards,
     });
-    const exercise = normalizeEnglishTrainerExercise({ ...data.exercise, mode, targetCount: count, exerciseStyle, folderPath });
+    const exercise = normalizeEnglishTrainerExercise({ ...data.exercise, mode, targetCount: count, exerciseStyle, folderPath, folderPaths });
     if (!exercise?.expectedEn) throw new Error("AI не вернул полный текст задания");
     const repeats = recentExercises.some((previous) =>
       englishExerciseTextsMatch(previous.promptRu, exercise.promptRu) ||
@@ -2246,12 +2317,12 @@ async function createEnglishTrainerExercise() {
   if (els.createEnglishTrainerExerciseButton.disabled) return;
   state.englishTrainer = normalizeEnglishTrainerState(state.englishTrainer);
   if (!englishTrainerVocabularyForExercise().length) {
-    setEnglishTrainerStatus("В выбранной папке нет слов для задания. Выберите другую папку или добавьте карточки.", "warn");
+    setEnglishTrainerStatus("В выбранных папках нет слов для задания. Выберите другие папки или добавьте карточки.", "warn");
     return;
   }
 
   els.createEnglishTrainerExerciseButton.disabled = true;
-  els.englishTrainerFolderSelect.disabled = true;
+  els.englishTrainerFolderChoices.disabled = true;
   const { count, mode } = englishTrainerExerciseSettings();
   try {
     setEnglishTrainerStatus("AI создает английское задание.", "work");
@@ -2264,7 +2335,7 @@ async function createEnglishTrainerExercise() {
     setEnglishTrainerStatus(`Не получилось создать задание: ${friendlyError(error.message)}.`, "error");
   } finally {
     els.createEnglishTrainerExerciseButton.disabled = false;
-    els.englishTrainerFolderSelect.disabled = false;
+    els.englishTrainerFolderChoices.disabled = false;
   }
 }
 
@@ -3168,6 +3239,11 @@ function renameFolder(oldFolder, newFolder) {
   });
   state.folders = getAllFolders()
     .map((folder) => (folder === oldFolder || folder.startsWith(`${oldFolder} / `) ? `${newFolder}${folder.slice(oldFolder.length)}` : folder));
+  const selection = normalizeEnglishTrainerState(state.englishTrainer).folderPaths;
+  if (selection.some((folder) => folder === oldFolder || folder.startsWith(`${oldFolder} / `))) {
+    setEnglishTrainerFolders(selection.map((folder) => folder === oldFolder || folder.startsWith(`${oldFolder} / `)
+      ? `${newFolder}${folder.slice(oldFolder.length)}` : folder));
+  }
   state.activeFolder = newFolder;
   let parent = parentFolder(newFolder);
   while (parent) {
@@ -3211,6 +3287,10 @@ function deleteFolder(folderPath) {
   }
   if (matchesDeletedFolder(state.songParentFolder)) {
     state.songParentFolder = SONG_ROOT_FOLDER;
+  }
+  const selection = normalizeEnglishTrainerState(state.englishTrainer).folderPaths;
+  if (selection.some(matchesDeletedFolder)) {
+    setEnglishTrainerFolders(selection.filter((folder) => !matchesDeletedFolder(folder)));
   }
 
   saveCards();
@@ -3652,7 +3732,7 @@ els.englishTrainerDictionaryDialog.addEventListener("click", (event) => {
   if (event.target === els.englishTrainerDictionaryDialog) closeEnglishTrainerDictionary();
 });
 els.createEnglishTrainerExerciseButton.addEventListener("click", createEnglishTrainerExercise);
-els.englishTrainerFolderSelect.addEventListener("change", changeEnglishTrainerFolder);
+els.englishTrainerFolderChoices.addEventListener("change", changeEnglishTrainerFolder);
 els.openEnglishTrainerTextButton.addEventListener("click", openEnglishTrainerTextDialog);
 els.closeEnglishTrainerTextButton.addEventListener("click", closeEnglishTrainerTextDialog);
 els.startEnglishTrainerManualPromptButton.addEventListener("click", startEnglishTrainerManualPrompt);

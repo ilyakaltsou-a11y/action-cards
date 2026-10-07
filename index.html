@@ -7,11 +7,11 @@
     <title>Карточки действий</title>
     <script>
       if (window.location.protocol === "file:") {
-        window.location.replace(`http://127.0.0.1:5176/${window.location.search || "?v=65"}`);
+        window.location.replace(`http://127.0.0.1:5176/${window.location.search || "?v=67"}`);
       }
     </script>
     <link rel="manifest" href="manifest.webmanifest" />
-    <link rel="stylesheet" href="styles.css?v=65" />
+    <link rel="stylesheet" href="styles.css?v=67" />
   </head>
   <body>
     <div class="app-shell">
@@ -184,12 +184,10 @@
             </div>
           </div>
           <div class="polish-controls">
-            <label class="trainer-folder-control">
-              <span>Папка для предложений</span>
-              <select id="englishTrainerFolderSelect">
-                <option value="all">Все карточки и слова</option>
-              </select>
-            </label>
+            <details class="trainer-folder-control">
+              <summary id="englishTrainerFolderSummary">Все карточки и слова</summary>
+              <fieldset id="englishTrainerFolderChoices" aria-label="Папки для предложений"></fieldset>
+            </details>
             <label>
               <span>Сколько слов использовать</span>
               <select id="englishTrainerExerciseCount">
@@ -597,8 +595,8 @@
       </article>
     </template>
 
-    <script src="modules/activity.js?v=66"></script>
-    <script src="modules/swipe.js?v=66"></script>
-    <script src="app.js?v=66"></script>
+    <script src="modules/activity.js?v=67"></script>
+    <script src="modules/swipe.js?v=67"></script>
+    <script src="app.js?v=67"></script>
   </body>
 </html>

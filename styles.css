@@ -212,6 +212,59 @@ h2 {
 
 .polish-controls .trainer-folder-control {
   grid-column: 1 / -1;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 253, 250, 0.86);
+}
+
+.trainer-folder-control summary {
+  min-height: 48px;
+  padding: 12px;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+#englishTrainerFolderChoices {
+  margin: 0;
+  padding: 4px 8px 8px;
+  border: 0;
+  max-height: 260px;
+  overflow-y: auto;
+  min-width: 0;
+}
+
+#englishTrainerFolderChoices label {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  gap: 10px;
+  padding: 6px 8px;
+  padding-inline-start: min(calc(8px + var(--folder-depth, 0) * 14px), 64px);
+  font-weight: 400;
+  cursor: pointer;
+}
+
+#englishTrainerFolderChoices input {
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  accent-color: var(--ink);
+}
+
+#englishTrainerFolderChoices span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+#englishTrainerFolderChoices label:has(input:checked) {
+  background: rgba(24, 18, 15, 0.06);
+  border-radius: 4px;
+}
+
+#englishTrainerFolderChoices:disabled {
+  opacity: 0.6;
 }
 
 .polish-dictionary-button {

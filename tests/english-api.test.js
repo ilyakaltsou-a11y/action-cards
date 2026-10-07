@@ -60,7 +60,13 @@ test(`${file}: English generation rotates focus and style without changing other
   });
   const scoped = JSON.parse(calls[3].messages.at(-1).content);
   assert.equal(scoped.folderPath, "Actions");
+  assert.deepEqual(scoped.folderPaths, ["Actions"]);
   assert.equal(scoped.sourceCards.length, 2);
   assert.ok(calls[3].messages[0].content.includes("Combine at least 2 focus expressions"));
   assert.ok(calls[3].messages[0].content.includes("Use ONLY the selected folder"));
+  await sandbox.api.createEnglishTrainerExercise(...prefix, vocabulary, 10, "medium", history, ["carry"], "request", {
+    folderPath: "Actions", folderPaths: ["Actions", "Home"], sourceCards: [{ word: "carry", phrase: "Carry the cup." }],
+  });
+  assert.deepEqual(JSON.parse(calls[4].messages.at(-1).content).folderPaths, ["Actions", "Home"]);
+  assert.ok(calls[4].messages[0].content.includes("Mix expressions from different selected folders"));
 });

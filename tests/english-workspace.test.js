@@ -101,7 +101,7 @@ async function launch({ offline = false, saved, storedFolder = "all", exerciseRe
   vm.createContext(sandbox);
   for (const script of document.querySelectorAll("script[src]")) {
     const file = script.getAttribute("src").split("?")[0];
-    const testApi = file === "app.js" ? "\nglobalThis.testApi = { state, swipes, activityTracker, renderStudy, loadServerCards, saveCards, startEditCard, currentCard, englishTrainerWords, mergeEnglishTrainerWords, renderEnglishTrainer, removeEnglishTrainerWord, boostEnglishTrainerWord, englishTrainerVocabularyForExercise, fetchEnglishTrainerExercise, englishExerciseTextsMatch };" : "";
+    const testApi = file === "app.js" ? "\nglobalThis.testApi = { state, swipes, activityTracker, renderStudy, loadServerCards, saveCards, startEditCard, currentCard, englishTrainerWords, mergeEnglishTrainerWords, renderEnglishTrainer, removeEnglishTrainerWord, boostEnglishTrainerWord, englishTrainerVocabularyForExercise, fetchEnglishTrainerExercise, englishExerciseTextsMatch, normalizeEnglishTrainerState, mergeEnglishTrainerState, renameFolder, deleteFolder };" : "";
     vm.runInContext(fs.readFileSync(path.join(root, "public", file), "utf8") + testApi, sandbox, { filename: file });
   }
   const flush = async () => { for (let index = 0; index < 10; index += 1) await new Promise(setImmediate); };
@@ -757,11 +757,15 @@ test("consecutive clicks produce different focus words and persist the rotation 
 });
 
 function chooseTrainerFolder(app, folder) {
-  const select = app.document.getElementById("englishTrainerFolderSelect");
-  const options = [...select.querySelectorAll("option")];
-  options.forEach((option) => option.removeAttribute("selected"));
-  options.find((option) => option.value === folder).selected = true;
-  select.dispatchEvent(new app.window.Event("change"));
+  toggleTrainerFolder(app, "all", true);
+  if (folder !== "all") toggleTrainerFolder(app, folder, true);
+}
+
+function toggleTrainerFolder(app, folder, checked) {
+  const checkbox = [...app.document.querySelectorAll("#englishTrainerFolderChoices input")].find((input) => input.value === folder);
+  assert.ok(checkbox, `Folder checkbox exists: ${folder}`);
+  checkbox.checked = checked;
+  checkbox.dispatchEvent(new app.window.Event("change", { bubbles: true }));
 }
 
 test("folder-based tasks use only selected cards, combine expressions and persist the chosen folder", async () => {
@@ -784,7 +788,8 @@ test("folder-based tasks use only selected cards, combine expressions and persis
   assert.equal(app.state.englishTrainer.currentExercise.folderPath, folder);
   const reloaded = await launch({ saved: app.getSaved() });
   assert.equal(reloaded.state.englishTrainer.folderPath, folder);
-  assert.equal(reloaded.document.getElementById("englishTrainerFolderSelect").value, folder);
+  assert.equal([...reloaded.document.querySelectorAll("#englishTrainerFolderChoices input")]
+    .find((input) => input.value === folder).checked, true);
 });
 
 test("folder scope includes descendants but excludes siblings, and empty folders do not call AI", async () => {
@@ -800,7 +805,7 @@ test("folder scope includes descendants but excludes siblings, and empty folders
   app.document.getElementById("createEnglishTrainerExerciseButton").click();
   await app.flush();
   assert.equal(app.requests.some((item) => item.route.includes("create-exercise")), false);
-  assert.ok(app.document.getElementById("englishTrainerStatus").textContent.includes("В выбранной папке нет слов"));
+  assert.ok(app.document.getElementById("englishTrainerStatus").textContent.includes("В выбранных папках нет слов"));
   chooseTrainerFolder(app, "all");
   assert.ok(app.api.englishTrainerVocabularyForExercise().length >= 50);
 });
@@ -817,4 +822,108 @@ test("folder exercises reject answers that use just one of the selected expressi
   chooseTrainerFolder(app, "all");
   assert.equal(app.state.englishTrainer.currentExercise, null);
   assert.equal(app.document.getElementById("englishTrainerExerciseCard").hidden, true);
+});
+
+test("multiple folder checkboxes combine vocabulary and source cards without duplicates and persist", async () => {
+  const app = await launch();
+  app.state.cards = [
+    { id: "a", word: "wave", phrase: "Wave hello.", folderPath: "Actions / Hands" },
+    { id: "b", word: "nod", phrase: "Nod hello.", folderPath: "Actions / Head" },
+    { id: "c", word: "cook", phrase: "Cook dinner.", folderPath: "Home" },
+    { id: "d", word: "travel", phrase: "Travel far.", folderPath: "Other" },
+  ];
+  app.state.folders = [];
+  app.api.mergeEnglishTrainerWords([{ word: "nevertheless", translation: "тем не менее" }]);
+  app.api.renderEnglishTrainer();
+  chooseTrainerFolder(app, "Actions");
+  toggleTrainerFolder(app, "Actions / Hands", true);
+  toggleTrainerFolder(app, "Home", true);
+  assert.deepEqual(Array.from(app.state.englishTrainer.folderPaths), ["Actions", "Actions / Hands", "Home"]);
+  assert.deepEqual(Array.from(app.api.englishTrainerVocabularyForExercise(), (word) => word.word).sort(), ["cook", "nod", "wave"]);
+  assert.ok(app.document.getElementById("englishTrainerFolderSummary").textContent.includes("(3)"));
+  assert.equal(app.document.querySelector(".trainer-folder-control").hasAttribute("open"), false);
+  app.document.getElementById("createEnglishTrainerExerciseButton").click();
+  assert.equal(app.document.getElementById("englishTrainerFolderChoices").disabled, true);
+  toggleTrainerFolder(app, "Other", true);
+  assert.equal(app.state.englishTrainer.folderPaths.includes("Other"), false);
+  await app.flush();
+  assert.equal(app.document.getElementById("englishTrainerFolderChoices").disabled, false);
+  const request = app.requests.find((item) => item.route.includes("create-exercise"));
+  assert.deepEqual(request.body.folderPaths, ["Actions", "Actions / Hands", "Home"]);
+  assert.equal(request.body.sourceCards.length, 3);
+  assert.equal(new Set(request.body.sourceCards.map((card) => card.word)).size, 3);
+  assert.deepEqual(Array.from(app.state.englishTrainer.currentExercise.folderPaths), request.body.folderPaths);
+  const saved = structuredClone(app.getSaved());
+  assert.deepEqual(saved.englishTrainer.folderPaths, request.body.folderPaths);
+  const reloaded = await launch({ saved });
+  assert.deepEqual(Array.from(reloaded.state.englishTrainer.folderPaths), request.body.folderPaths);
+  for (const input of reloaded.document.querySelectorAll("#englishTrainerFolderChoices input")) {
+    assert.equal(input.checked, request.body.folderPaths.includes(input.value));
+  }
+  toggleTrainerFolder(app, "Actions / Hands", false);
+  toggleTrainerFolder(app, "Actions", false);
+  assert.deepEqual(Array.from(app.api.englishTrainerVocabularyForExercise(), (word) => word.word), ["cook"]);
+  assert.equal(app.state.englishTrainer.currentExercise, null);
+  toggleTrainerFolder(app, "Home", false);
+  assert.deepEqual(Array.from(app.state.englishTrainer.folderPaths), ["all"]);
+  assert.ok(app.api.englishTrainerVocabularyForExercise().some((word) => word.word === "nevertheless"));
+});
+
+test("folder selection migrates legacy profiles and follows the newest synced selection", async () => {
+  const app = await launch();
+  const normalize = app.api.normalizeEnglishTrainerState;
+  assert.deepEqual(Array.from(normalize({ folderPath: "Actions" }).folderPaths), ["Actions"]);
+  assert.deepEqual(Array.from(normalize({ folderPaths: [" Home ", "Actions", "Home", null] }).folderPaths), ["Actions", "Home"]);
+  assert.deepEqual(Array.from(normalize({ folderPaths: [] }).folderPaths), ["all"]);
+  assert.deepEqual(Array.from(normalize({ folderPaths: ["all", "Actions"] }).folderPaths), ["all"]);
+  const merge = app.api.mergeEnglishTrainerState;
+  const remote = { folderPaths: ["Actions", "Home"], folderUpdatedAt: 20 };
+  const local = { folderPath: "Other", folderUpdatedAt: 10 };
+  assert.deepEqual(Array.from(merge(remote, local).folderPaths), ["Actions", "Home"]);
+  assert.deepEqual(Array.from(merge(local, remote).folderPaths), ["Actions", "Home"]);
+  const legacy = await launch({ saved: { cards: [], starterPacks: [], folders: ["Actions"], englishTrainer: { folderPath: "Actions", folderUpdatedAt: 20 } } });
+  assert.deepEqual(Array.from(legacy.state.englishTrainer.folderPaths), ["Actions"]);
+});
+
+test("selected folders stay together in the hierarchy and follow rename and deletion", async () => {
+  const app = await launch();
+  app.state.cards = [];
+  app.state.folders = ["A / Child", "A!", "Other"];
+  app.api.renderEnglishTrainer();
+  const paths = () => [...app.document.querySelectorAll("#englishTrainerFolderChoices input")].map((input) => input.value);
+  assert.equal(paths().indexOf("A / Child"), paths().indexOf("A") + 1);
+  chooseTrainerFolder(app, "A / Child");
+  toggleTrainerFolder(app, "Other", true);
+  app.api.renameFolder("A", "Renamed");
+  app.api.renderEnglishTrainer();
+  assert.deepEqual(Array.from(app.state.englishTrainer.folderPaths), ["Other", "Renamed / Child"]);
+  app.api.deleteFolder("Renamed");
+  app.api.renderEnglishTrainer();
+  assert.deepEqual(Array.from(app.state.englishTrainer.folderPaths), ["Other"]);
+  app.api.deleteFolder("Other");
+  app.api.renderEnglishTrainer();
+  assert.deepEqual(Array.from(app.state.englishTrainer.folderPaths), ["all"]);
+});
+
+test("a large folder does not crowd out examples and focus words from another selected folder", async () => {
+  const app = await launch();
+  app.state.cards = Array.from({ length: 45 }, (_, index) => ({
+    id: `large-${index}`, word: `action ${String.fromCharCode(97 + Math.floor(index / 26))}${String.fromCharCode(97 + index % 26)}`,
+    phrase: `Action ${index}.`, folderPath: "Large",
+  }));
+  app.state.cards.push({ id: "small", word: "cook", phrase: "Cook dinner.", folderPath: "Small" });
+  app.state.folders = [];
+  app.api.renderEnglishTrainer();
+  chooseTrainerFolder(app, "Large");
+  toggleTrainerFolder(app, "Small", true);
+  app.document.getElementById("createEnglishTrainerExerciseButton").click();
+  await app.flush();
+  const request = app.requests.find((item) => item.route.includes("create-exercise"));
+  assert.equal(request.body.sourceCards.length, 40);
+  assert.ok(request.body.sourceCards.some((card) => card.word === "cook"));
+  assert.ok(request.body.focusWords.includes("cook"));
+  toggleTrainerFolder(app, "all", true);
+  assert.deepEqual(Array.from(app.state.englishTrainer.folderPaths), ["all"]);
+  assert.ok([...app.document.querySelectorAll("#englishTrainerFolderChoices input")]
+    .every((input) => input.checked === (input.value === "all")));
 });
