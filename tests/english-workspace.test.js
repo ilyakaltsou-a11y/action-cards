@@ -128,6 +128,161 @@ function touch(app, type, x, y, options = {}) {
   return event;
 }
 
+function choosePracticeCheckbox(app, selector, value, checked) {
+  const input = [...app.document.querySelectorAll(`${selector} input`)].find((item) => item.value === value);
+  assert.ok(input, `Checkbox ${value} is present`);
+  input.checked = checked;
+  input.dispatchEvent(new app.window.Event("change", { bubbles: true }));
+}
+
+test("practice selection combines folders and individual cards without changing the library", async () => {
+  const app = await launch();
+  const doc = app.document;
+  const originalCount = app.state.cards.length;
+  const ids = [app.state.cards.find((card) => card.id.startsWith("basic-question-001")).id,
+    app.state.cards.find((card) => card.id.startsWith("basic-action-001")).id];
+  doc.getElementById("openStudyFoldersButton").click();
+  choosePracticeCheckbox(app, "#practiceFolderChoices", "all", false);
+  assert.equal(doc.getElementById("applyPracticeSelectionButton").disabled, true);
+  choosePracticeCheckbox(app, "#practiceFolderChoices", "Стартовые / Вопросы", true);
+  choosePracticeCheckbox(app, "#practiceFolderChoices", "Стартовые / Действия с предметами", true);
+  assert.equal(doc.querySelectorAll("#practiceCardChoices input").length, 32);
+  doc.getElementById("clearPracticeCardsButton").click();
+  for (const id of ids) choosePracticeCheckbox(app, "#practiceCardChoices", id, true);
+  doc.getElementById("applyPracticeSelectionButton").click();
+  assert.equal(doc.getElementById("practiceSelectionDialog").open, false);
+  assert.equal(app.state.cards.length, originalCount);
+  assert.deepEqual(Array.from(app.state.studySettings.selection.cardIds).sort(), ids.sort());
+  assert.equal(doc.querySelectorAll("#deckList .deck-item").length, originalCount);
+  const reviewed = app.api.currentCard();
+  touch(app, "touchstart", 100, 100);
+  touch(app, "touchmove", 240, 110);
+  touch(app, "touchend", 240, 110);
+  assert.equal(reviewed.attempts, 1);
+  assert.ok(ids.includes(app.api.currentCard().id));
+  assert.notEqual(app.api.currentCard().id, reviewed.id);
+  doc.querySelector('[data-study-mode="russian"]').click();
+  await app.flush();
+  assert.equal(app.getSaved().studySettings.selection.cardIds.length, 2);
+  const reloaded = await launch({ saved: app.getSaved() });
+  assert.deepEqual(Array.from(reloaded.state.studySettings.selection.cardIds).sort(), ids.sort());
+  assert.ok(ids.includes(reloaded.api.currentCard().id));
+  assert.equal(reloaded.state.studySettings.mode, "russian");
+});
+
+test("cancel, empty selection, search and select-all never silently alter saved practice", async () => {
+  const app = await launch();
+  const doc = app.document;
+  doc.getElementById("openStudyFoldersButton").click();
+  doc.getElementById("clearPracticeCardsButton").click();
+  assert.equal(doc.getElementById("applyPracticeSelectionButton").disabled, true);
+  doc.getElementById("applyPracticeSelectionButton").click();
+  assert.equal(doc.getElementById("practiceSelectionDialog").open, true);
+  doc.getElementById("closePracticeSelectionButton").click();
+  assert.equal(app.state.studySettings.selection, undefined);
+  doc.getElementById("openStudyFoldersButton").click();
+  const input = doc.getElementById("practiceCardSearch");
+  input.value = "Можешь поднести";
+  input.dispatchEvent(new app.window.Event("input", { bubbles: true }));
+  assert.equal(doc.querySelectorAll("#practiceCardChoices input").length, 1);
+  const first = doc.querySelector("#practiceCardChoices input");
+  choosePracticeCheckbox(app, "#practiceCardChoices", first.value, false);
+  input.value = "no-match-at-all";
+  input.dispatchEvent(new app.window.Event("input", { bubbles: true }));
+  assert.equal(doc.querySelectorAll("#practiceCardChoices input").length, 0);
+  assert.equal(doc.getElementById("applyPracticeSelectionButton").disabled, false);
+  doc.getElementById("selectAllPracticeCardsButton").click();
+  doc.getElementById("applyPracticeSelectionButton").click();
+  assert.equal(app.state.studySettings.selection.cardIds, null);
+  assert.deepEqual(Array.from(app.state.studySettings.selection.folderPaths), ["all"]);
+});
+
+test("sentence generation receives only selected card examples, even when siblings share a keyword", async () => {
+  const app = await launch({ exerciseResponse: (body) => ({ promptRu: "Сначала подними телефон, затем поднеси его ближе.", expectedEn: "Pick up the phone and bring it closer.", usedWords: body.focusWords }) });
+  const doc = app.document;
+  const selected = app.state.cards.find((card) => card.word === "pick up");
+  const second = app.state.cards.find((card) => card.word === "bring closer");
+  app.state.cards.push({ ...selected, id: "same-word-unselected", phrase: "Pick up the suitcase." });
+  doc.getElementById("englishSentencesTab").click();
+  doc.getElementById("openTrainerCardSelectionButton").click();
+  choosePracticeCheckbox(app, "#practiceFolderChoices", "all", false);
+  choosePracticeCheckbox(app, "#practiceFolderChoices", "Стартовые / Действия с предметами", true);
+  doc.getElementById("clearPracticeCardsButton").click();
+  for (const card of [selected, second]) choosePracticeCheckbox(app, "#practiceCardChoices", card.id, true);
+  doc.getElementById("applyPracticeSelectionButton").click();
+  doc.getElementById("createEnglishTrainerExerciseButton").click();
+  await app.flush();
+  const request = app.requests.find((item) => item.route.includes("sentence-trainer/create-exercise"));
+  assert.ok(request);
+  assert.deepEqual(request.body.sourceCards.map((card) => card.phrase).sort(), [selected.phrase, second.phrase].sort());
+  assert.deepEqual(request.body.words.map((word) => word.word).sort(), ["bring closer", "pick up"]);
+  assert.ok(app.api.englishTrainerWords().length > 2);
+  assert.equal(app.state.studySettings.selection, undefined);
+  const reloaded = await launch({ saved: app.getSaved() });
+  assert.deepEqual(Array.from(reloaded.state.englishTrainer.cardIds).sort(), [selected.id, second.id].sort());
+  assert.equal(reloaded.api.englishTrainerVocabularyForExercise().length, 2);
+});
+
+test("all-folder sentence practice still restricts examples and vocabulary to explicitly selected cards", async () => {
+  const app = await launch({ exerciseResponse: (body) => ({ promptRu: "Подними телефон и поднеси его ближе.", expectedEn: "Pick up the phone and bring it closer.", usedWords: body.focusWords }) });
+  const doc = app.document;
+  const cards = app.state.cards.filter((card) => ["pick up", "bring closer"].includes(card.word));
+  doc.getElementById("englishSentencesTab").click();
+  doc.getElementById("openTrainerCardSelectionButton").click();
+  doc.getElementById("clearPracticeCardsButton").click();
+  for (const card of cards) choosePracticeCheckbox(app, "#practiceCardChoices", card.id, true);
+  doc.getElementById("applyPracticeSelectionButton").click();
+  assert.deepEqual(Array.from(app.state.englishTrainer.folderPaths), ["all"]);
+  doc.getElementById("createEnglishTrainerExerciseButton").click();
+  await app.flush();
+  const request = app.requests.find((item) => item.route.includes("sentence-trainer/create-exercise"));
+  assert.ok(request);
+  assert.deepEqual(request.body.sourceCards.map((card) => card.phrase).sort(), Array.from(cards, (card) => card.phrase).sort());
+  assert.deepEqual(request.body.words.map((word) => word.word).sort(), ["bring closer", "pick up"]);
+});
+
+test("practice picker handles thousands of cards with bounded rendering and stable search selection", async () => {
+  const app = await launch();
+  app.state.cards = Array.from({ length: 1200 }, (_, index) => ({ ...app.state.cards[0], id: `large-${index}`, phrase: `Example ${index}`, folderPath: "Large" }));
+  app.state.activeFolder = "all";
+  const doc = app.document;
+  doc.getElementById("openStudyFoldersButton").click();
+  assert.equal(doc.querySelectorAll("#practiceCardChoices input").length, 100);
+  assert.equal(doc.getElementById("morePracticeCardsButton").hidden, false);
+  doc.getElementById("morePracticeCardsButton").click();
+  assert.equal(doc.querySelectorAll("#practiceCardChoices input").length, 200);
+  doc.getElementById("clearPracticeCardsButton").click();
+  doc.getElementById("practiceCardSearch").value = "Example 1199";
+  doc.getElementById("practiceCardSearch").dispatchEvent(new app.window.Event("input", { bubbles: true }));
+  choosePracticeCheckbox(app, "#practiceCardChoices", "large-1199", true);
+  doc.getElementById("applyPracticeSelectionButton").click();
+  assert.deepEqual(Array.from(app.state.studySettings.selection.cardIds), ["large-1199"]);
+  assert.equal(app.api.currentCard().id, "large-1199");
+});
+
+test("selected practice folders follow rename and deletion without falling back to unrelated cards", async () => {
+  const app = await launch();
+  app.state.studySettings.selection = { folderPaths: ["Стартовые / Вопросы"], cardIds: null };
+  app.api.renameFolder("Стартовые / Вопросы", "Стартовые / Просьбы");
+  assert.deepEqual(Array.from(app.state.studySettings.selection.folderPaths), ["Стартовые / Просьбы"]);
+  assert.ok(app.api.currentCard());
+  app.api.deleteFolder("Стартовые / Просьбы");
+  assert.equal(app.api.currentCard(), null);
+  assert.equal(app.state.cards.length, 50);
+});
+
+test("newest sentence folder and card selection wins as one unit during profile merge", async () => {
+  const app = await launch();
+  const merged = app.api.mergeEnglishTrainerState(
+    { folderPaths: ["Home"], cardIds: ["home-1"], folderUpdatedAt: 50 },
+    { folderPaths: ["Actions"], cardIds: ["action-1"], folderUpdatedAt: 100 });
+  assert.deepEqual(Array.from(merged.folderPaths), ["Actions"]);
+  assert.deepEqual(Array.from(merged.cardIds), ["action-1"]);
+  const cleared = app.api.mergeEnglishTrainerState(merged, { folderPaths: ["all"], cardIds: null, folderUpdatedAt: 200 });
+  assert.equal(cleared.cardIds, null);
+  assert.deepEqual(Array.from(cleared.folderPaths), ["all"]);
+});
+
 test("complete app startup adds basic action and question cards to an existing profile once", async () => {
   const app = await launch();
   assert.equal(app.state.cards.length, 62);

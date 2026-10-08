@@ -2718,6 +2718,135 @@ h3,
   background-size: contain;
 }
 
+#practiceSelectionDialog {
+  overflow: hidden;
+}
+
+#practiceSelectionDialog .practice-selection-panel {
+  width: min(720px, 100%);
+  height: min(760px, calc(100svh - 28px));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow: hidden;
+}
+
+.practice-selection-panel > * {
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+.practice-selection-panel .panel-head {
+  margin-bottom: 0;
+}
+
+.practice-selection-panel .panel-head h2 {
+  margin: 0;
+  font-size: 23px;
+}
+
+.practice-folder-step summary {
+  padding: 6px 0;
+  font-size: 17px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.practice-selection-panel h3 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 500;
+}
+
+.practice-folder-choices,
+.practice-card-choices {
+  max-height: min(160px, 22svh);
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px;
+  margin: 0;
+  background: #fff;
+}
+
+.practice-card-choices {
+  flex: 1 1 auto;
+  min-height: 60px;
+  max-height: none;
+}
+
+.practice-folder-choices label,
+.practice-card-choice {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  padding: 10px;
+  font-size: 15px;
+  line-height: 1.4;
+  font-weight: 400;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.practice-folder-choices input,
+.practice-card-choice input {
+  width: 20px;
+  height: 20px;
+  min-height: 0;
+  margin: 1px 0 0;
+  accent-color: #28715b;
+}
+
+.practice-card-choice + .practice-card-choice {
+  border-top: 1px solid var(--line);
+}
+
+.practice-card-choice small {
+  display: block;
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.practice-search {
+  display: grid;
+  gap: 6px;
+  font-size: 14px;
+}
+
+.practice-search input {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  padding: 8px 10px;
+  font-size: 16px;
+}
+
+.practice-selection-actions,
+.practice-selection-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0;
+}
+
+.practice-selection-panel button:not(.icon-button) {
+  font-size: 14px;
+  min-height: 40px;
+  padding: 8px 12px;
+}
+
+.practice-selection-footer {
+  background: #fff;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+
 .card-pattern {
   font-size: 16px;
   line-height: 1.5;

@@ -1298,8 +1298,15 @@ async function handlePolishCheckAnswer(request, env) {
 }
 
 function normalizeStudySettings(settings = {}) {
+  const strings = (values) => [...new Set((Array.isArray(values) ? values : []).filter((value) => typeof value === "string" && value.trim()).map((value) => value.trim()))].sort();
+  const selection = settings?.selection;
+  const folderPaths = strings(selection?.folderPaths);
   return {
     mode: settings?.mode === "russian" ? "russian" : "picture",
+    ...(selection && typeof selection === "object" ? { selection: {
+      folderPaths: folderPaths.includes("all") ? ["all"] : folderPaths,
+      cardIds: Array.isArray(selection.cardIds) ? strings(selection.cardIds) : null,
+    } } : {}),
     updatedAt: Number.isFinite(settings?.updatedAt) ? Math.max(0, settings.updatedAt) : 0,
   };
 }

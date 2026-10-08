@@ -50,7 +50,7 @@ test("versioned modules fall back to the offline cache without intercepting API 
 
 test("compatibility browser copies match public sources including the new modules", () => {
   const { BROWSER_FILES } = require("../scripts/sync-browser.js");
-  for (const file of [...BROWSER_FILES, "modules/activity.js", "modules/swipe.js"]) {
+  for (const file of [...BROWSER_FILES, "modules/activity.js", "modules/swipe.js", "modules/practice-selection.js"]) {
     assert.equal(fs.readFileSync(path.join(root, file), "utf8"), fs.readFileSync(path.join(root, "public", file), "utf8"), file);
   }
 });

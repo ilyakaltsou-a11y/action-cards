@@ -42,4 +42,11 @@ test(`${file}: card study mode round-trips per profile and old profiles default 
   const englishTrainer = { folderPath: "Actions", folderPaths: ["Actions", "Home"], folderUpdatedAt: 12345 };
   await call("deck-folders", { englishTrainer });
   assert.deepEqual((await call("deck-folders")).englishTrainer, englishTrainer);
+  const selectionSettings = { mode: "russian", selection: { folderPaths: ["Actions", "Home"], cardIds: ["a", "b"] }, updatedAt: 12346 };
+  await call("deck-selection", { studySettings: selectionSettings });
+  assert.deepEqual((await call("deck-selection")).studySettings, selectionSettings);
+  await call("deck-empty-selection", { studySettings: { ...selectionSettings, selection: { folderPaths: [], cardIds: [] } } });
+  assert.deepEqual((await call("deck-empty-selection")).studySettings.selection, { folderPaths: [], cardIds: [] });
+  await call("deck-invalid-selection", { studySettings: { selection: { folderPaths: [null, "all", "Home", "all"], cardIds: ["b", 123, "a", "a"] } } });
+  assert.deepEqual((await call("deck-invalid-selection")).studySettings.selection, { folderPaths: ["all"], cardIds: ["a", "b"] });
 });

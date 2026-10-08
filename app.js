@@ -7,7 +7,7 @@ const LANGUAGE_KEY = "action-cards:language:v1";
 const POLISH_KEY = "action-cards:polish:v1";
 const ENGLISH_TRAINER_KEY = "action-cards:english-trainer:v1";
 const STUDY_SETTINGS_KEY = "action-cards:study-settings:v1";
-const DEFAULT_CARDS_URL = "default-cards.json?v=68";
+const DEFAULT_CARDS_URL = "default-cards.json?v=69";
 const STARTER_PACKS_KEY = "action-cards:starter-packs:v1";
 const BASIC_ACTIONS_PACK = "basic-actions-v1";
 const BASIC_ACTIONS_FOLDER = "Стартовые / Действия с предметами";
@@ -116,6 +116,8 @@ const els = {
   englishCardsPractice: document.querySelector("#englishCardsPractice"),
   englishSentencesPractice: document.querySelector("#englishSentencesPractice"),
   openStudyFoldersButton: document.querySelector("#openStudyFoldersButton"),
+  practiceSelectionDialog: document.querySelector("#practiceSelectionDialog"),
+  openTrainerCardSelectionButton: document.querySelector("#openTrainerCardSelectionButton"),
   studyFolderLabel: document.querySelector("#studyFolderLabel"),
   startBasicActionsButton: document.querySelector("#startBasicActionsButton"),
   cardPhrase: document.querySelector("#cardPhrase"),
@@ -264,6 +266,23 @@ const els = {
 };
 
 const { normalizeActivity, mergeActivity, activitiesHaveSameSyncState } = globalThis.ActionCardsActivity;
+const practiceSelection = globalThis.PracticeSelection;
+let practiceSelectionTarget = "cards";
+const practiceSelector = practiceSelection.create({
+  dialog: els.practiceSelectionDialog,
+  folders: document.querySelector("#practiceFolderChoices"),
+  list: document.querySelector("#practiceCardChoices"),
+  search: document.querySelector("#practiceCardSearch"),
+  summary: document.querySelector("#practiceSelectionCount"),
+  apply: document.querySelector("#applyPracticeSelectionButton"),
+  all: document.querySelector("#selectAllPracticeCardsButton"),
+  none: document.querySelector("#clearPracticeCardsButton"),
+  more: document.querySelector("#morePracticeCardsButton"),
+  getCards: () => state.cards,
+  getFolders: getFolderTreePaths,
+  matches: folderDescendantMatches,
+  onApply: applyPracticeSelection,
+});
 const activityTracker = globalThis.ActionCardsActivity.createActivityTracker({
   getActivity: () => state.activity,
   setActivity: (activity) => { state.activity = activity; },
@@ -487,6 +506,7 @@ function getLocalEnglishTrainerKey() {
 function normalizeStudySettings(settings = {}) {
   return {
     mode: settings?.mode === "russian" ? "russian" : "picture",
+    ...(settings?.selection && typeof settings.selection === "object" ? { selection: practiceSelection.normalize(settings.selection) } : {}),
     updatedAt: Number.isFinite(settings?.updatedAt) ? Math.max(0, settings.updatedAt) : 0,
   };
 }
@@ -647,6 +667,7 @@ async function startBasicActions() {
   try {
     await ensureStarterCards({ restore: true });
     state.activeFolder = BASIC_ACTIONS_FOLDER;
+    useStudyFolder(BASIC_ACTIONS_FOLDER);
     localStorage.setItem(FOLDER_KEY, state.activeFolder);
     saveCards();
     renderStudy(0);
@@ -809,6 +830,7 @@ function normalizeEnglishTrainerState(englishTrainer = {}) {
     words: [...wordsByKey.values()].sort((left, right) => left.word.localeCompare(right.word, "en")),
     folderPath: folderPaths[0],
     folderPaths,
+    cardIds: practiceSelection.normalize(englishTrainer).cardIds,
     folderUpdatedAt: Number.isFinite(englishTrainer.folderUpdatedAt) ? englishTrainer.folderUpdatedAt : 0,
     excludedCardWords: [...new Set((Array.isArray(englishTrainer.excludedCardWords) ? englishTrainer.excludedCardWords : [])
       .map(englishTrainerWordKey).filter(Boolean))].sort(),
@@ -823,6 +845,7 @@ function englishTrainerSyncSignature(englishTrainer = {}) {
   return JSON.stringify({
     folderPath: normalized.folderPath,
     folderPaths: normalized.folderPaths,
+    cardIds: normalized.cardIds,
     folderUpdatedAt: normalized.folderUpdatedAt,
     excludedCardWords: normalized.excludedCardWords,
     words: normalized.words.map((word) => ({
@@ -854,6 +877,8 @@ function mergeEnglishTrainerState(serverEnglishTrainer = {}, localEnglishTrainer
     words: mergedWords,
     folderPaths: normalizeEnglishTrainerState(localEnglishTrainer.folderUpdatedAt > (serverEnglishTrainer.folderUpdatedAt || 0)
       ? localEnglishTrainer : serverEnglishTrainer).folderPaths,
+    cardIds: normalizeEnglishTrainerState(localEnglishTrainer.folderUpdatedAt > (serverEnglishTrainer.folderUpdatedAt || 0)
+      ? localEnglishTrainer : serverEnglishTrainer).cardIds,
     folderUpdatedAt: Math.max(localEnglishTrainer.folderUpdatedAt || 0, serverEnglishTrainer.folderUpdatedAt || 0),
     excludedCardWords: [
       ...normalizeEnglishTrainerState(serverEnglishTrainer).excludedCardWords,
@@ -1075,7 +1100,37 @@ function createCard(draft) {
 }
 
 function getStudyDeck() {
+  return state.studySettings.selection
+    ? practiceSelection.filter(state.cards, state.studySettings.selection, folderDescendantMatches)
+    : getFolderDeck();
+}
+
+function getFolderDeck() {
   return state.cards.filter(folderMatches);
+}
+
+function useStudyFolder(folder) {
+  state.studySettings = { ...state.studySettings, selection: { folderPaths: [folder], cardIds: null }, updatedAt: Math.max(Date.now(), state.studySettings.updatedAt + 1) };
+}
+
+function openPracticeSelection(target = "cards") {
+  practiceSelectionTarget = target;
+  const selection = target === "sentences" ? state.englishTrainer
+    : state.studySettings.selection || { folderPaths: [state.activeFolder] };
+  practiceSelector.open(selection);
+}
+
+function applyPracticeSelection(selection) {
+  if (practiceSelectionTarget === "sentences") {
+    setEnglishTrainerFolders(selection.folderPaths, selection.cardIds);
+    renderEnglishTrainer();
+    setEnglishTrainerStatus("Выбор карточек сохранён.", "ok");
+  } else {
+    state.studySettings = { ...state.studySettings, selection, updatedAt: Math.max(Date.now(), state.studySettings.updatedAt + 1) };
+    renderStudy(0);
+  }
+  saveCards();
+  closeAppDialog(els.practiceSelectionDialog);
 }
 
 function currentCard() {
@@ -1199,6 +1254,10 @@ function renderStudy(index = state.currentIndex) {
   swipes.cancel();
   if (state.activeFolder !== "all" && !getFolderTreePaths().includes(state.activeFolder)) state.activeFolder = "all";
   const deck = getStudyDeck();
+  const selection = state.studySettings.selection;
+  els.studyFolderLabel.textContent = selection
+    ? `${selection.folderPaths.map(folderLabel).join(", ") || "Нет папок"}${selection.cardIds === null ? "" : ` · Карточек: ${deck.length}`}`
+    : folderLabel(state.activeFolder);
 
   if (!deck.length) {
     state.currentIndex = 0;
@@ -1240,7 +1299,7 @@ function renderStudy(index = state.currentIndex) {
 
 function setStudyMode(mode) {
   if (!["picture", "russian"].includes(mode) || mode === state.studySettings.mode) return;
-  state.studySettings = { mode, updatedAt: Math.max(Date.now(), state.studySettings.updatedAt + 1) };
+  state.studySettings = { ...state.studySettings, mode, updatedAt: Math.max(Date.now(), state.studySettings.updatedAt + 1) };
   renderStudy();
   saveCards();
 }
@@ -1284,10 +1343,9 @@ function renderDeck() {
   renderBulkFolderOptions();
   updateBulkToolbar();
 
-  const deck = getStudyDeck();
+  const deck = getFolderDeck();
   const summary = deck.length === 1 ? "1 карточка" : `${deck.length} карточек`;
   els.deckSummary.textContent = `${summary} · ${folderLabel(state.activeFolder)}`;
-  els.studyFolderLabel.textContent = folderLabel(state.activeFolder);
 
   if (!deck.length) {
     const empty = document.createElement("p");
@@ -1315,6 +1373,8 @@ function renderDeck() {
         toggleCardSelection(card.id, !state.selectedCardIds.has(card.id));
         return;
       }
+      useStudyFolder(state.activeFolder);
+      saveCards();
       renderStudy(index);
       closeDeckDialog();
     });
@@ -1353,7 +1413,7 @@ function toggleCardSelection(cardId, selected) {
 
 function selectVisibleCards() {
   state.selectionMode = true;
-  getStudyDeck().forEach((card) => state.selectedCardIds.add(card.id));
+  getFolderDeck().forEach((card) => state.selectedCardIds.add(card.id));
   renderDeck();
 }
 
@@ -1380,7 +1440,7 @@ function updateBulkToolbar() {
   els.selectedCardsCount.textContent = `${count} выбрано`;
   els.moveSelectedCardsButton.disabled = count === 0 || !els.bulkFolderSelect.value;
   els.deleteSelectedCardsButton.disabled = count === 0;
-  els.selectVisibleCardsButton.disabled = getStudyDeck().length === 0;
+  els.selectVisibleCardsButton.disabled = getFolderDeck().length === 0;
 }
 
 function moveSelectedCards() {
@@ -1393,6 +1453,7 @@ function moveSelectedCards() {
   });
   mergeFolders([targetFolder]);
   state.activeFolder = targetFolder;
+  useStudyFolder(targetFolder);
   localStorage.setItem(FOLDER_KEY, state.activeFolder);
   const movedCount = state.selectedCardIds.size;
   state.selectedCardIds.clear();
@@ -1423,7 +1484,7 @@ function renderFolderTree() {
   if (state.activeFolder !== "all" && !folders.includes(state.activeFolder)) {
     state.activeFolder = "all";
   }
-  els.folderSummary.textContent = `${folderLabel(state.activeFolder)} · ${getStudyDeck().length}`;
+  els.folderSummary.textContent = `${folderLabel(state.activeFolder)} · ${getFolderDeck().length}`;
   els.folderTree.replaceChildren();
 
   const allButton = createFolderTreeButton("all", `Все папки (${state.cards.length})`, 0, false);
@@ -1467,7 +1528,9 @@ function createFolderTreeButton(folder, label, depth, hasChildren = false) {
       else state.expandedFolders.add(folder);
     }
     state.activeFolder = folder;
+    useStudyFolder(folder);
     localStorage.setItem(FOLDER_KEY, state.activeFolder);
+    saveCards();
     renderStudy(0);
   });
 
@@ -1594,7 +1657,7 @@ function moveRatedCard(card, known) {
   if (originalIndex < 0) return;
 
   state.cards.splice(originalIndex, 1);
-  const visibleCards = state.cards.filter(folderMatches);
+  const visibleCards = getStudyDeck();
 
   if (known) {
     if (!visibleCards.length) {
@@ -1940,11 +2003,11 @@ function mergeEnglishTrainerWords(words = []) {
   return words.map(normalizeEnglishTrainerWordEntry).filter(Boolean).length;
 }
 
-function englishTrainerWords(selection = "all") {
+function englishTrainerWords(selection = "all", cardIds = null) {
   const folderPaths = normalizeTrainerFolderPaths(selection);
-  const allFolders = folderPaths.includes("all");
+  const allFolders = folderPaths.includes("all") && cardIds === null;
   const trainer = normalizeEnglishTrainerState(state.englishTrainer);
-  const cards = state.cards.filter((card) => folderPaths.some((folder) => folderDescendantMatches(card, folder)));
+  const cards = practiceSelection.filter(state.cards, { folderPaths, cardIds }, folderDescendantMatches);
   const cardKeys = new Set(cards.map((card) => englishTrainerWordKey(card.word)));
   const byKey = new Map(trainer.words.filter((word) => allFolders || cardKeys.has(englishTrainerWordKey(word.word)))
     .map((word) => [englishTrainerWordKey(word.word), word]));
@@ -2181,6 +2244,8 @@ function renderEnglishTrainerFolders() {
     setEnglishTrainerFolders(valid);
   }
   const selection = state.englishTrainer.folderPaths;
+  const selectedCards = state.englishTrainer.cardIds;
+  els.openTrainerCardSelectionButton.textContent = selectedCards === null ? "Выбрать карточки" : `Выбрано карточек: ${practiceSelection.filter(state.cards, { folderPaths: selection, cardIds: selectedCards }, folderDescendantMatches).length}`;
   els.englishTrainerFolderSummary.textContent = selection.includes("all") ? "Все карточки и слова"
     : `Папки для предложений (${selection.length}): ${selection.map((folder) => folder.split(" / ").at(-1)).join(", ")}`;
   els.englishTrainerFolderChoices.replaceChildren();
@@ -2209,11 +2274,12 @@ function renderEnglishTrainerFolders() {
   }
 }
 
-function setEnglishTrainerFolders(folderPaths) {
+function setEnglishTrainerFolders(folderPaths, cardIds = state.englishTrainer.cardIds ?? null) {
   state.englishTrainer.folderPaths = normalizeTrainerFolderPaths(folderPaths);
   // Keep the single-folder field for older saved profiles and clients.
   state.englishTrainer.folderPath = state.englishTrainer.folderPaths[0];
-  state.englishTrainer.folderUpdatedAt = Date.now();
+  state.englishTrainer.cardIds = practiceSelection.normalize({ cardIds }).cardIds;
+  state.englishTrainer.folderUpdatedAt = Math.max(Date.now(), (state.englishTrainer.folderUpdatedAt || 0) + 1);
   state.englishTrainer.currentExercise = null;
   state.englishTrainer.feedback = null;
 }
@@ -2224,7 +2290,7 @@ function changeEnglishTrainerFolder(event) {
   const folder = checkbox.value;
   const selected = state.englishTrainer.folderPaths.filter((path) => path !== "all" && path !== folder);
   if (checkbox.checked) selected.push(folder);
-  setEnglishTrainerFolders(folder === "all" ? ["all"] : selected);
+  setEnglishTrainerFolders(folder === "all" ? ["all"] : selected, null);
   saveCards();
   renderEnglishTrainer();
   [...els.englishTrainerFolderChoices.querySelectorAll("input")].find((input) => input.value === folder)?.focus();
@@ -2232,7 +2298,7 @@ function changeEnglishTrainerFolder(event) {
 }
 
 function englishTrainerVocabularyForExercise(folderPaths = state.englishTrainer.folderPaths) {
-  const words = englishTrainerWords(folderPaths);
+  const words = englishTrainerWords(folderPaths, state.englishTrainer.cardIds ?? null);
   const usage = new Map();
   const recent = state.englishTrainer.exercises.slice(0, 20);
   recent.forEach((exercise, index) => {
@@ -2261,7 +2327,8 @@ function recentEnglishTrainerExercisesForAi() {
 
 function englishTrainerSourceCards(folderPaths, words) {
   const rank = new Map(words.map((word, index) => [englishTrainerWordKey(word.word), index]));
-  const cards = state.cards.filter((card) => rank.has(englishTrainerWordKey(card.word)))
+  const cards = practiceSelection.filter(state.cards, { folderPaths, cardIds: state.englishTrainer.cardIds }, folderDescendantMatches)
+    .filter((card) => rank.has(englishTrainerWordKey(card.word)))
     .sort((left, right) => rank.get(englishTrainerWordKey(left.word)) - rank.get(englishTrainerWordKey(right.word)));
   const groups = folderPaths.map((folder) => cards.filter((card) => folderDescendantMatches(card, folder)));
   const selected = new Set();
@@ -2283,7 +2350,7 @@ function englishTrainerSourceCards(folderPaths, words) {
 async function fetchEnglishTrainerExercise(count, mode) {
   const folderPath = state.englishTrainer.folderPath || "all";
   const folderPaths = [...state.englishTrainer.folderPaths];
-  const scoped = !folderPaths.includes("all");
+  const scoped = !folderPaths.includes("all") || state.englishTrainer.cardIds !== null;
   const words = englishTrainerVocabularyForExercise(folderPaths);
   const focusCount = scoped && count >= 10 ? Math.min(3, Math.max(2, Math.floor(count / 5))) : Math.min(3, Math.max(1, Math.floor(count / 5)));
   const cards = scoped ? englishTrainerSourceCards(folderPaths, words) : [];
@@ -2354,6 +2421,7 @@ async function createEnglishTrainerExercise() {
 
   els.createEnglishTrainerExerciseButton.disabled = true;
   els.englishTrainerFolderChoices.disabled = true;
+  els.openTrainerCardSelectionButton.disabled = true;
   const { count, mode } = englishTrainerExerciseSettings();
   try {
     setEnglishTrainerStatus("AI создает английское задание.", "work");
@@ -2367,6 +2435,7 @@ async function createEnglishTrainerExercise() {
   } finally {
     els.createEnglishTrainerExerciseButton.disabled = false;
     els.englishTrainerFolderChoices.disabled = false;
+    els.openTrainerCardSelectionButton.disabled = false;
   }
 }
 
@@ -3258,6 +3327,14 @@ function renameFolder(oldFolder, newFolder) {
     return;
   }
   if (newFolder === oldFolder) return;
+  if (state.studySettings.selection) {
+    const selection = state.studySettings.selection;
+    state.studySettings = { ...state.studySettings, selection: {
+      ...selection,
+      folderPaths: selection.folderPaths.map((folder) => folder === oldFolder || folder.startsWith(`${oldFolder} / `)
+        ? `${newFolder}${folder.slice(oldFolder.length)}` : folder),
+    }, updatedAt: Math.max(Date.now(), state.studySettings.updatedAt + 1) };
+  }
 
   state.cards = state.cards.map((card) => {
     const folder = cardFolder(card);
@@ -3301,6 +3378,13 @@ function deleteFolder(folderPath) {
   if (!confirm(message)) return;
 
   const deletedCardIds = new Set(deletedCards.map((card) => card.id));
+  if (state.studySettings.selection) {
+    const selection = state.studySettings.selection;
+    state.studySettings = { ...state.studySettings, selection: {
+      folderPaths: selection.folderPaths.filter((path) => !matchesDeletedFolder(path)),
+      cardIds: selection.cardIds === null ? null : selection.cardIds.filter((id) => !deletedCardIds.has(id)),
+    }, updatedAt: Math.max(Date.now(), state.studySettings.updatedAt + 1) };
+  }
   state.cards = state.cards.filter((card) => !deletedCardIds.has(card.id));
   state.folders = getAllFolders().filter((candidate) => !matchesDeletedFolder(candidate));
   deletedFolders.forEach((deletedFolder) => {
@@ -3696,7 +3780,12 @@ els.settingsDialog.addEventListener("click", (event) => {
   if (event.target === els.settingsDialog) closeSettingsDialog();
 });
 els.openDeckButton.addEventListener("click", openDeckDialog);
-els.openStudyFoldersButton.addEventListener("click", openDeckDialog);
+els.openStudyFoldersButton.addEventListener("click", () => openPracticeSelection("cards"));
+els.openTrainerCardSelectionButton.addEventListener("click", () => openPracticeSelection("sentences"));
+document.querySelector("#closePracticeSelectionButton").addEventListener("click", () => closeAppDialog(els.practiceSelectionDialog));
+els.practiceSelectionDialog.addEventListener("click", (event) => {
+  if (event.target === els.practiceSelectionDialog) closeAppDialog(els.practiceSelectionDialog);
+});
 els.startBasicActionsButton.addEventListener("click", startBasicActions);
 els.openCreatorButton.addEventListener("click", openCreatorDialog);
 els.closeCreatorButton.addEventListener("click", () => closeAppDialog(els.cardCreatorDialog));

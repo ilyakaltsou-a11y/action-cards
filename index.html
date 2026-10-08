@@ -7,11 +7,11 @@
     <title>Карточки действий</title>
     <script>
       if (window.location.protocol === "file:") {
-        window.location.replace(`http://127.0.0.1:5176/${window.location.search || "?v=68"}`);
+        window.location.replace(`http://127.0.0.1:5176/${window.location.search || "?v=69"}`);
       }
     </script>
     <link rel="manifest" href="manifest.webmanifest" />
-    <link rel="stylesheet" href="styles.css?v=68" />
+    <link rel="stylesheet" href="styles.css?v=69" />
   </head>
   <body>
     <div class="app-shell">
@@ -188,6 +188,7 @@
             <details class="trainer-folder-control">
               <summary id="englishTrainerFolderSummary">Все карточки и слова</summary>
               <fieldset id="englishTrainerFolderChoices" aria-label="Папки для предложений"></fieldset>
+              <button type="button" id="openTrainerCardSelectionButton" class="soft-button">Выбрать карточки</button>
             </details>
             <label>
               <span>Сколько слов использовать</span>
@@ -596,8 +597,33 @@
       </article>
     </template>
 
-    <script src="modules/activity.js?v=68"></script>
-    <script src="modules/swipe.js?v=68"></script>
-    <script src="app.js?v=68"></script>
+    <dialog class="deck-dialog" id="practiceSelectionDialog">
+      <section class="deck-dialog-panel practice-selection-panel" aria-label="Выбор папок и карточек">
+        <div class="panel-head">
+          <h2>Папки и карточки</h2>
+          <button type="button" class="icon-button" id="closePracticeSelectionButton" aria-label="Закрыть выбор">×</button>
+        </div>
+        <details class="practice-folder-step" open>
+          <summary>Папки</summary>
+          <fieldset id="practiceFolderChoices" class="practice-folder-choices" aria-label="Папки для тренировки"></fieldset>
+        </details>
+        <h3>Карточки</h3>
+        <label class="practice-search"><span>Поиск карточек</span><input type="search" id="practiceCardSearch" autocomplete="off" /></label>
+        <div class="practice-selection-actions">
+          <button type="button" class="soft-button" id="selectAllPracticeCardsButton">Выбрать все</button>
+          <button type="button" class="soft-button" id="clearPracticeCardsButton">Снять все</button>
+        </div>
+        <div id="practiceCardChoices" class="practice-card-choices"></div>
+        <button type="button" class="soft-button" id="morePracticeCardsButton" hidden>Показать ещё</button>
+        <div class="practice-selection-footer">
+          <span id="practiceSelectionCount" role="status"></span>
+          <button type="button" class="main-button" id="applyPracticeSelectionButton">Применить</button>
+        </div>
+      </section>
+    </dialog>
+    <script src="modules/practice-selection.js?v=69"></script>
+    <script src="modules/activity.js?v=69"></script>
+    <script src="modules/swipe.js?v=69"></script>
+    <script src="app.js?v=69"></script>
   </body>
 </html>
