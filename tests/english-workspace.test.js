@@ -7,7 +7,7 @@ const { parseHTML } = require("linkedom");
 const root = path.resolve(__dirname, "..");
 const defaults = JSON.parse(fs.readFileSync(path.join(root, "public/default-cards.json")));
 
-async function launch({ offline = false, saved, storedFolder = "all", exerciseResponse, localStudySettings } = {}) {
+async function launch({ offline = false, saved, storedFolder = "all", exerciseResponse, localStudySettings, importPlan, importImage, beforeSave } = {}) {
   const { document, window } = parseHTML(fs.readFileSync(path.join(root, "public/index.html"), "utf8"));
   const storage = new Map([["action-cards:folder:v1", storedFolder]]);
   if (localStudySettings) storage.set("action-cards:study-settings:v1:deck-workspace-test", JSON.stringify(localStudySettings));
@@ -70,6 +70,13 @@ async function launch({ offline = false, saved, storedFolder = "all", exerciseRe
       const body = JSON.parse(options.body);
       return { ok: true, json: async () => ({ word: body.word, phrase: "I carry the bag.", translation: "Я несу сумку.", imageUrl: defaults.cards[0].imageUrl }) };
     }
+    if (route === "/api/import-cards/prepare") {
+      return { ok: true, json: async () => importPlan ? importPlan(JSON.parse(options.body)) : { cards: [], skipped: [] } };
+    }
+    if (route === "/api/import-cards/image") {
+      const body = JSON.parse(options.body);
+      return { ok: true, json: async () => importImage ? importImage(body) : { imageUrl: defaults.cards[0].imageUrl } };
+    }
     if (route === "/api/english/sentence-trainer/create-exercise") {
       const body = JSON.parse(options.body);
       exerciseCalls += 1;
@@ -84,13 +91,14 @@ async function launch({ offline = false, saved, storedFolder = "all", exerciseRe
       return { ok: true, json: async () => ({ exercise: { promptRu: body.promptRu, expectedEn: "I carry the bag.", hint: "Используй настоящее время.", usedWords: ["carry", "bag"] } }) };
     }
     if (options.method === "PUT") {
+      await beforeSave?.(JSON.parse(options.body));
       remote = JSON.parse(options.body);
       return { ok: true, json: async () => ({ ok: true }) };
     }
     return { ok: true, json: async () => structuredClone(remote) };
   };
   const sandbox = {
-    window, document, localStorage, fetch, URL, AbortController,
+    window, document, localStorage, fetch, URL, AbortController, AbortSignal,
     crypto: require("node:crypto").webcrypto, navigator: { language: "ru" },
     setTimeout: () => 0, clearTimeout: () => {}, setInterval: () => 0, confirm: () => true, console,
   };
@@ -135,6 +143,48 @@ function choosePracticeCheckbox(app, selector, value, checked) {
   input.dispatchEvent(new app.window.Event("change", { bubbles: true }));
 }
 
+test("bulk import previews translations, retains partial successes and retries only remaining selected cards", async () => {
+  const drafts = ["balance", "slide", "stack"].map((word, index) => ({ index, word, phrase: `${word} the cup.`, translation: "Действие с чашкой.", actionKey: word, scene: `Show ${word}.` }));
+  let failOnce = true;
+  const app = await launch({ importPlan: () => ({ cards: drafts, skipped: [{ phrase: "Pick up the cup.", duplicateOf: "Pick up the phone." }] }),
+    importImage: ({ word }) => { if (word === "slide" && failOnce) { failOnce = false; throw new Error("image failed"); } return { imageUrl: "assets/test.jpg" }; } });
+  const doc = app.document, count = app.state.cards.length;
+  doc.getElementById("openCreatorButton").click();
+  doc.getElementById("openCardImportButton").click();
+  assert.equal(doc.getElementById("cardCreatorDialog").open, false);
+  assert.equal(doc.getElementById("cardImportDialog").open, true);
+  doc.getElementById("cardImportInput").value = "Balance the cup.\nSlide the cup.\nStack the cup.";
+  doc.getElementById("prepareCardImportButton").click(); await app.flush();
+  assert.equal([...doc.querySelectorAll("#cardImportPreview input")].filter((input) => input.checked).length, 3);
+  assert.equal(doc.getElementById("cardImportSource").open, false);
+  doc.getElementById("generateCardImportButton").click(); await app.flush();
+  assert.equal(app.state.cards.length, count + 2);
+  assert.equal([...doc.querySelectorAll("#cardImportPreview input")].filter((input) => input.checked).length, 1);
+  assert.equal(app.getSaved().cards.length, count + 2);
+  doc.getElementById("generateCardImportButton").click(); await app.flush();
+  assert.equal(app.state.cards.length, count + 3);
+  assert.equal(app.requests.filter((item) => item.route === "/api/import-cards/image").length, 4);
+  assert.equal(doc.getElementById("generateCardImportButton").disabled, true);
+  const reloaded = await launch({ saved: app.getSaved() });
+  assert.equal(reloaded.state.cards.filter((card) => drafts.some((draft) => draft.actionKey === card.actionKey)).length, 3);
+});
+
+test("profile snapshot saves are serialized and retain the full completed import", async () => {
+  let block = false, release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  const app = await launch({ beforeSave: () => block ? gate : undefined });
+  const originalCount = app.state.cards.length;
+  const originalRequests = app.requests.filter((item) => item.route === "/api/cards").length;
+  block = true;
+  app.state.cards.push({ ...app.state.cards[0], id: "import-1" }); app.api.saveCards();
+  app.state.cards.push({ ...app.state.cards[0], id: "import-2" }); app.api.saveCards();
+  await app.flush();
+  assert.equal(app.requests.filter((item) => item.route === "/api/cards").length, originalRequests + 1);
+  release(); await app.flush();
+  assert.equal(app.getSaved().cards.length, originalCount + 2);
+  assert.deepEqual(app.getSaved().cards.slice(-2).map((card) => card.id), ["import-1", "import-2"]);
+});
+
 test("practice selection combines folders and individual cards without changing the library", async () => {
   const app = await launch();
   const doc = app.document;
@@ -146,7 +196,7 @@ test("practice selection combines folders and individual cards without changing 
   assert.equal(doc.getElementById("applyPracticeSelectionButton").disabled, true);
   choosePracticeCheckbox(app, "#practiceFolderChoices", "Стартовые / Вопросы", true);
   choosePracticeCheckbox(app, "#practiceFolderChoices", "Стартовые / Действия с предметами", true);
-  assert.equal(doc.querySelectorAll("#practiceCardChoices input").length, 32);
+  assert.equal(doc.querySelectorAll("#practiceCardChoices input").length, 46);
   doc.getElementById("clearPracticeCardsButton").click();
   for (const id of ids) choosePracticeCheckbox(app, "#practiceCardChoices", id, true);
   doc.getElementById("applyPracticeSelectionButton").click();
@@ -268,7 +318,7 @@ test("selected practice folders follow rename and deletion without falling back 
   assert.ok(app.api.currentCard());
   app.api.deleteFolder("Стартовые / Просьбы");
   assert.equal(app.api.currentCard(), null);
-  assert.equal(app.state.cards.length, 50);
+  assert.equal(app.state.cards.length, defaults.cards.length - 12);
 });
 
 test("newest sentence folder and card selection wins as one unit during profile merge", async () => {
@@ -285,18 +335,18 @@ test("newest sentence folder and card selection wins as one unit during profile 
 
 test("complete app startup adds basic action and question cards to an existing profile once", async () => {
   const app = await launch();
-  assert.equal(app.state.cards.length, 62);
+  assert.equal(app.state.cards.length, defaults.cards.length);
   assert.equal(app.state.cards.filter((card) => card.id.startsWith("basic-action-")).length, 20);
   assert.equal(app.state.cards.filter((card) => card.id.startsWith("basic-question-")).length, 12);
   await app.api.loadServerCards();
-  assert.equal(app.state.cards.length, 62);
+  assert.equal(app.state.cards.length, defaults.cards.length);
   const ids = [...app.document.querySelectorAll("[id]")].map((element) => element.id);
   assert.equal(ids.length, new Set(ids).size);
 });
 
 test("starter pack loads with the sync server unavailable and a stale folder selection", async () => {
   const app = await launch({ offline: true, storedFolder: "Deleted folder" });
-  assert.equal(app.state.cards.length, 62);
+  assert.equal(app.state.cards.length, defaults.cards.length);
   assert.equal(app.state.activeFolder, "all");
   assert.ok(app.document.querySelector("#cardImage").style.backgroundImage);
 });
@@ -324,7 +374,7 @@ test("basic practice selects the folder and every action has its motion symbol",
   app.document.querySelector("#startBasicActionsButton").click();
   await app.flush();
   assert.equal(app.state.activeFolder, "Стартовые / Действия с предметами");
-  assert.equal(app.state.cards.length, 62);
+  assert.equal(app.state.cards.length, defaults.cards.length);
   for (let index = 0; index < 20; index += 1) {
     app.api.renderStudy(index);
     assert.equal(app.document.querySelector("#cardMotion").hidden, false);
@@ -342,7 +392,7 @@ test("creating and editing a card work after moving the form into a dialog", asy
   await app.flush();
   assert.equal(app.document.querySelector("#draftCard").hidden, false);
   app.document.querySelector("#saveDraftButton").click();
-  assert.equal(app.state.cards.length, 63);
+  assert.equal(app.state.cards.length, defaults.cards.length + 1);
   assert.equal(app.document.querySelector("#cardCreatorDialog").open, false);
   app.document.querySelector("#openDeckButton").click();
   app.document.querySelector(".edit-card-button").click();
@@ -374,7 +424,7 @@ test("deleted basic cards stay deleted after reload", async () => {
   app.api.saveCards();
   await app.flush();
   await app.api.loadServerCards();
-  assert.equal(app.state.cards.length, 61);
+  assert.equal(app.state.cards.length, defaults.cards.length - 1);
   assert.equal(app.state.cards.some((card) => card.id === removed.id), false);
 });
 
@@ -400,6 +450,22 @@ test("the question starter pack upgrades existing profiles, preserves progress a
   reloaded.document.getElementById("startBasicActionsButton").click();
   await reloaded.flush();
   assert.equal(reloaded.state.cards.filter((card) => card.id.startsWith("basic-question-")).length, 11);
+});
+
+test("cup continuation upgrades old profiles once, skips equivalent personal actions and preserves progress", async () => {
+  const old = defaults.cards.filter((card) => !card.id.startsWith("cup-action-"));
+  const personal = { id: "personal-handle", word: "hold by the handle", phrase: "Hold the bottle by the handle.", attempts: 7, correct: 5, level: 3 };
+  const app = await launch({ saved: { cards: [...old, personal], starterPacks: ["basic-actions-v1", "basic-questions-v1"] } });
+  const additions = app.state.cards.filter((card) => card.id.startsWith("cup-action-"));
+  assert.equal(additions.length, 13);
+  assert.ok(additions.every((card) => card.folderPath === "Стартовые / Действия с предметами" && card.imageUrl && card.translation && card.actionKey));
+  assert.equal(app.state.cards.find((card) => card.id === personal.id).attempts, 7);
+  assert.equal(app.state.cards.find((card) => card.id === personal.id).level, 3);
+  app.state.cards = app.state.cards.filter((card) => card.id !== additions[0].id);
+  app.api.saveCards(); await app.flush();
+  const reloaded = await launch({ saved: app.getSaved() });
+  assert.equal(reloaded.state.cards.filter((card) => card.id.startsWith("cup-action-")).length, 12);
+  assert.equal(reloaded.state.cards.some((card) => card.id === additions[0].id), false);
 });
 
 test("question starter examples do not duplicate matching personal cards", async () => {
@@ -1001,14 +1067,14 @@ test("folder-based tasks use only selected cards, combine expressions and persis
   chooseTrainerFolder(app, folder);
   assert.equal(app.state.englishTrainer.folderPath, folder);
   const words = app.api.englishTrainerVocabularyForExercise();
-  assert.equal(words.length, 20);
+  assert.equal(words.length, 34);
   assert.equal(words.some((entry) => entry.word === "nevertheless"), false);
   app.document.getElementById("createEnglishTrainerExerciseButton").click();
   await app.flush();
   const request = app.requests.find((item) => item.route.includes("create-exercise"));
   assert.equal(request.body.folderPath, folder);
-  assert.equal(request.body.sourceCards.length, 20);
-  assert.equal(request.body.words.length, 20);
+  assert.equal(request.body.sourceCards.length, 34);
+  assert.equal(request.body.words.length, 34);
   assert.ok(request.body.focusWords.length >= 2);
   assert.ok(request.body.sourceCards.every((card) => words.some((entry) => entry.word === card.word)));
   assert.equal(app.state.englishTrainer.currentExercise.folderPath, folder);

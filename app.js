@@ -7,13 +7,14 @@ const LANGUAGE_KEY = "action-cards:language:v1";
 const POLISH_KEY = "action-cards:polish:v1";
 const ENGLISH_TRAINER_KEY = "action-cards:english-trainer:v1";
 const STUDY_SETTINGS_KEY = "action-cards:study-settings:v1";
-const DEFAULT_CARDS_URL = "default-cards.json?v=69";
+const DEFAULT_CARDS_URL = "default-cards.json?v=70";
 const STARTER_PACKS_KEY = "action-cards:starter-packs:v1";
 const BASIC_ACTIONS_PACK = "basic-actions-v1";
 const BASIC_ACTIONS_FOLDER = "Стартовые / Действия с предметами";
 const STARTER_PACKS = [
   { id: BASIC_ACTIONS_PACK, prefix: "basic-action-" },
   { id: "basic-questions-v1", prefix: "basic-question-" },
+  { id: "basic-cup-actions-v1", prefix: "cup-action-" },
 ];
 const BASIC_ACTION_MOTIONS = new Map([
   ["Pick up the phone.", "arrow-up"],
@@ -267,6 +268,29 @@ const els = {
 
 const { normalizeActivity, mergeActivity, activitiesHaveSameSyncState } = globalThis.ActionCardsActivity;
 const practiceSelection = globalThis.PracticeSelection;
+const cardImportDialog = document.querySelector("#cardImportDialog");
+const cardImporter = globalThis.CardImport.createController({
+  dialog: cardImportDialog, input: document.querySelector("#cardImportInput"), folder: document.querySelector("#cardImportFolder"),
+  prepare: document.querySelector("#prepareCardImportButton"), generate: document.querySelector("#generateCardImportButton"),
+  stop: document.querySelector("#stopCardImportButton"), preview: document.querySelector("#cardImportPreview"),
+  duplicates: document.querySelector("#cardImportDuplicates"), status: document.querySelector("#cardImportStatus"),
+  source: document.querySelector("#cardImportSource"),
+  getProfile: () => state.profileId, getCards: () => state.cards, getFolders: getFolderTreePaths,
+  defaultFolder: () => BASIC_ACTIONS_FOLDER, formatError: friendlyError,
+  request: async (url, body, timeout) => {
+    const response = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body), signal: AbortSignal.timeout(timeout) });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "AI unavailable");
+    return data;
+  },
+  onCard: (draft) => {
+    if (!globalThis.CardImport.deduplicate([draft], state.cards).cards.length) return false;
+    state.cards.push(createCard(draft));
+    mergeFolders([draft.folderPath]);
+    saveCards(); renderStudy();
+  },
+});
 let practiceSelectionTarget = "cards";
 const practiceSelector = practiceSelection.create({
   dialog: els.practiceSelectionDialog,
@@ -650,6 +674,7 @@ async function ensureStarterCards({ restore = false } = {}) {
     for (const card of cards) {
       const key = songPhraseKey(card.phrase);
       if (phrases.has(key)) continue;
+      if (pack.id === "basic-cup-actions-v1" && !globalThis.CardImport.deduplicate([card], state.cards).cards.length) continue;
       state.cards.push(card);
       phrases.add(key);
     }
@@ -987,26 +1012,31 @@ function mergePolishState(serverPolish = {}, localPolish = {}) {
   });
 }
 
-async function syncCardsToServer() {
+let cardSyncQueue = Promise.resolve();
+
+function syncCardsToServer() {
   if (!state.profileSyncReady) return;
-  try {
-    await fetch("/api/cards", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        profile: state.profileId,
-        cards: state.cards,
-        starterPacks: state.starterPacks,
-        studySettings: state.studySettings,
-        folders: getAllFolders(),
-        activity: state.activity,
-        englishTrainer: state.englishTrainer,
-        polish: state.polish,
-      }),
-    });
-  } catch {
-    setStatus("Карточки сохранены на этом устройстве. Сервер синхронизации сейчас недоступен.", "warn");
-  }
+  const profile = state.profileId;
+  const body = JSON.stringify({
+    profile,
+    cards: state.cards,
+    starterPacks: state.starterPacks,
+    studySettings: state.studySettings,
+    folders: getAllFolders(),
+    activity: state.activity,
+    englishTrainer: state.englishTrainer,
+    polish: state.polish,
+  });
+  // Serialize snapshots so a slower earlier save cannot overwrite the completed import.
+  cardSyncQueue = cardSyncQueue.then(async () => {
+    try {
+      const response = await fetch("/api/cards", { method: "PUT", headers: { "Content-Type": "application/json" }, body });
+      if (!response.ok) throw new Error("Sync unavailable");
+    } catch {
+      if (state.profileId === profile) setStatus("Карточки сохранены на этом устройстве. Сервер синхронизации сейчас недоступен.", "warn");
+    }
+  });
+  return cardSyncQueue;
 }
 
 function hydrateCard(card) {
@@ -1017,6 +1047,8 @@ function hydrateCard(card) {
     translation: card.translation || "",
     patternTranslation: card.patternTranslation || "",
     textOnly: card.textOnly === true,
+    actionKey: card.actionKey || globalThis.CardImport.actionKey(card.phrase || card.answer),
+    motionIcon: card.motionIcon || "",
     topic: card.topic || inferTopic(card),
     folderPath: normalizeFolderPath(card.folderPath) || defaultFolderForCard(card),
     scene: card.scene || card.prompt || "",
@@ -1062,6 +1094,8 @@ function cardSyncSignature(card) {
     savedCard.translation,
     savedCard.patternTranslation,
     savedCard.textOnly,
+    savedCard.actionKey,
+    savedCard.motionIcon,
     savedCard.topic,
     savedCard.folderPath,
     savedCard.scene,
@@ -1095,6 +1129,8 @@ function createCard(draft) {
     scene: draft.scene,
     imagePreference: draft.imagePreference || "",
     imageUrl: draft.imageUrl,
+    actionKey: draft.actionKey,
+    motionIcon: draft.motionIcon,
     createdAt: Date.now(),
   });
 }
@@ -1286,7 +1322,7 @@ function renderStudy(index = state.currentIndex) {
   els.flashcard.classList.remove("is-flipped");
   els.flashcard.style.transform = "";
   setVisual(els.cardImage, card.imageUrl, "Нет картинки");
-  const motionIcon = BASIC_ACTION_MOTIONS.get(songPhraseKey(card.phrase));
+  const motionIcon = card.motionIcon || BASIC_ACTION_MOTIONS.get(songPhraseKey(card.phrase));
   els.cardMotion.hidden = !motionIcon;
   if (motionIcon) els.cardMotionIcon.setAttribute("href", `assets/icons.svg#${motionIcon}`);
   els.cardPhrase.textContent = card.phrase;
@@ -1914,6 +1950,8 @@ function saveDraft() {
         ...state.cards[index],
         word: state.draft.word,
         phrase: state.draft.phrase,
+        actionKey: state.cards[index].phrase === state.draft.phrase ? state.cards[index].actionKey : globalThis.CardImport.actionKey(state.draft.phrase),
+        motionIcon: state.cards[index].phrase === state.draft.phrase ? state.cards[index].motionIcon : "",
         translation: state.draft.translation,
         topic: state.draft.topic || inferTopic(state.draft),
         folderPath: state.draft.folderPath,
@@ -3788,6 +3826,11 @@ els.practiceSelectionDialog.addEventListener("click", (event) => {
 });
 els.startBasicActionsButton.addEventListener("click", startBasicActions);
 els.openCreatorButton.addEventListener("click", openCreatorDialog);
+document.querySelector("#openCardImportButton").addEventListener("click", () => {
+  closeAppDialog(els.cardCreatorDialog); cardImporter.open();
+});
+document.querySelector("#closeCardImportButton").addEventListener("click", () => closeAppDialog(cardImportDialog));
+cardImportDialog.addEventListener("click", (event) => { if (event.target === cardImportDialog) closeAppDialog(cardImportDialog); });
 els.closeCreatorButton.addEventListener("click", () => closeAppDialog(els.cardCreatorDialog));
 els.cardCreatorDialog.addEventListener("click", (event) => {
   if (event.target === els.cardCreatorDialog) closeAppDialog(els.cardCreatorDialog);

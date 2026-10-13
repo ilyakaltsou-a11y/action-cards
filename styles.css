@@ -2835,6 +2835,27 @@ h3,
   padding: 0;
 }
 
+.card-import-panel {
+  width: min(720px, 100%);
+  height: min(760px, calc(100svh - 28px));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow: hidden;
+}
+.card-import-panel > * { flex: 0 0 auto; min-width: 0; }
+.card-import-panel .panel-head { margin-bottom: 0; }
+.card-import-panel .panel-head h2 { margin: 0; font-size: 24px; }
+.card-import-panel .practice-card-choices { flex: 1 1 auto; max-height: none; min-height: 60px; }
+.card-import-panel .status-box:empty { display: none; }
+.card-import-panel .status-box { margin: 0; padding: 12px; font-size: 14px; }
+.card-import-panel textarea { min-height: 120px; height: 120px; font-size: 16px; margin-top: 8px; }
+.card-import-panel button { font-size: 15px; min-height: 42px; padding: 10px 14px; }
+.card-import-panel small { display: block; }
+.card-import-panel details { font-size: 14px; }
+.card-import-panel summary { cursor: pointer; }
+#cardImportDuplicates { color: var(--muted); max-height: 120px; overflow: auto; }
+
 .practice-selection-panel button:not(.icon-button) {
   font-size: 14px;
   min-height: 40px;

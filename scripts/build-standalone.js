@@ -54,6 +54,10 @@ for (const filePath of [...listFiles(path.join(publicDir, "assets")), ...listFil
 }
 
 let workerSource = fs.readFileSync(workerSourcePath, "utf8");
+const sharedImport = 'import "../public/modules/card-import.js";';
+if (workerSource.includes(sharedImport)) {
+  workerSource = workerSource.replace(sharedImport, fs.readFileSync(path.join(publicDir, "modules/card-import.js"), "utf8"));
+}
 const assetDispatch = "return await env.ASSETS.fetch(request);";
 if (!workerSource.includes(assetDispatch)) throw new Error("Worker asset dispatch was not found");
 workerSource = workerSource.replace(assetDispatch, "return serveStatic(url);");

@@ -23,7 +23,8 @@ test(`${file}: English generation rotates focus and style without changing other
     },
   };
   vm.createContext(sandbox);
-  const source = fs.readFileSync(path.join(root, file), "utf8").replace("export default {", "const worker = {");
+  vm.runInContext(fs.readFileSync(path.join(root, "public/modules/card-import.js"), "utf8"), sandbox);
+  const source = fs.readFileSync(path.join(root, file), "utf8").replace('import "../public/modules/card-import.js";', "").replace("export default {", "const worker = {");
   vm.runInContext(source + "\nglobalThis.api = { createEnglishTrainerExercise, deepseekJson };", sandbox);
   const vocabulary = [
     { word: "pick up", notes: "Pick up the phone. / Подними телефон." },

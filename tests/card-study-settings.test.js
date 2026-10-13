@@ -13,7 +13,8 @@ test(`${file}: card study mode round-trips per profile and old profiles default 
     console: { log: () => {} },
   };
   vm.createContext(sandbox);
-  const source = fs.readFileSync(path.join(root, file), "utf8").replace("export default {", "const worker = {");
+  vm.runInContext(fs.readFileSync(path.join(root, "public/modules/card-import.js"), "utf8"), sandbox);
+  const source = fs.readFileSync(path.join(root, file), "utf8").replace('import "../public/modules/card-import.js";', "").replace("export default {", "const worker = {");
   vm.runInContext(source + "\nglobalThis.api = { handleGetCards, handleSaveCards };", sandbox);
   const env = { CARDS_KV: {
     get: async (key) => saved.has(key) ? JSON.parse(saved.get(key)) : null,

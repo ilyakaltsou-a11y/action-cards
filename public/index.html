@@ -7,11 +7,11 @@
     <title>Карточки действий</title>
     <script>
       if (window.location.protocol === "file:") {
-        window.location.replace(`http://127.0.0.1:5176/${window.location.search || "?v=69"}`);
+        window.location.replace(`http://127.0.0.1:5176/${window.location.search || "?v=70"}`);
       }
     </script>
     <link rel="manifest" href="manifest.webmanifest" />
-    <link rel="stylesheet" href="styles.css?v=69" />
+    <link rel="stylesheet" href="styles.css?v=70" />
   </head>
   <body>
     <div class="app-shell">
@@ -118,6 +118,7 @@
             <button class="icon-button" id="closeCreatorButton" type="button" aria-label="Закрыть создание карточки">×</button>
           </div>
           <span class="status-dot" id="aiStatusDot">AI</span>
+          <button class="soft-button" id="openCardImportButton" type="button"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#layers"></use></svg>Добавить списком</button>
 
           <form class="creator-form" id="creatorForm">
             <div class="mode-switch" aria-label="Способ создания фразы">
@@ -621,9 +622,28 @@
         </div>
       </section>
     </dialog>
-    <script src="modules/practice-selection.js?v=69"></script>
-    <script src="modules/activity.js?v=69"></script>
-    <script src="modules/swipe.js?v=69"></script>
-    <script src="app.js?v=69"></script>
+    <dialog class="deck-dialog" id="cardImportDialog">
+      <section class="deck-dialog-panel card-import-panel" aria-label="Добавление карточек списком">
+        <div class="panel-head">
+          <h2>Добавить списком</h2>
+          <button type="button" class="icon-button" id="closeCardImportButton" aria-label="Закрыть список">×</button>
+        </div>
+        <label class="word-field"><span>Папка</span><select id="cardImportFolder"></select></label>
+        <details id="cardImportSource" open><summary>Фразы и перевод</summary><textarea id="cardImportInput" aria-label="Фразы и перевод" rows="6" autocomplete="off"></textarea></details>
+        <button type="button" class="soft-button" id="prepareCardImportButton">Проверить список</button>
+        <div class="status-box" id="cardImportStatus" role="status"></div>
+        <details id="cardImportDuplicates" hidden></details>
+        <fieldset id="cardImportPreview" class="practice-card-choices" aria-label="Новые карточки" hidden></fieldset>
+        <div class="practice-selection-actions">
+          <button type="button" class="main-button" id="generateCardImportButton" hidden>Создать карточки с картинками</button>
+          <button type="button" class="soft-button" id="stopCardImportButton" hidden>Остановить</button>
+        </div>
+      </section>
+    </dialog>
+    <script src="modules/practice-selection.js?v=70"></script>
+    <script src="modules/card-import.js?v=70"></script>
+    <script src="modules/activity.js?v=70"></script>
+    <script src="modules/swipe.js?v=70"></script>
+    <script src="app.js?v=70"></script>
   </body>
 </html>

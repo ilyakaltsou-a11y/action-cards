@@ -1,0 +1,20 @@
+{
+  "folderPath": "Стартовые / Действия с предметами",
+  "imagePrompt": "A single vertical 2:3 phone flashcard illustration. Polished educational style, clear hands and object, sparse kitchen background, no writing or watermark. Show exactly the scene. Add a contrasting directional arrow for movement, no arrows for stationary actions.",
+  "cards": [
+    { "word": "hold by the handle", "phrase": "Hold the cup by the handle.", "translation": "Держи чашку за ручку.", "scene": "Close-up hand gripping only the handle of an upright teal mug, fingers through the handle and thumb above. Entire hand and mug visible.", "motionIcon": "" },
+    { "word": "spill", "phrase": "Don’t spill the drink.", "translation": "Не пролей напиток.", "scene": "A tilted mug filled with tea nearly overflowing, one hand urgently steadies it. Red warning symbol beside the liquid at the rim.", "motionIcon": "circle-slash" },
+    { "word": "keep steady", "phrase": "Keep the cup steady.", "translation": "Держи чашку неподвижно.", "scene": "Two hands stabilize an upright mug of tea. The liquid surface is perfectly flat. No movement arrows.", "motionIcon": "pause" },
+    { "word": "look at", "phrase": "Look at the cup.", "translation": "Посмотри на чашку.", "scene": "Person's eyes directed at a mug on the table, dotted gaze line from the eyes to the mug. Hands away from the mug.", "motionIcon": "" },
+    { "word": "check if", "phrase": "Check if it’s clean.", "translation": "Проверь, чистая ли она.", "scene": "Person inspecting inside a clean empty mug held near the eyes, cup interior clearly visible and a small check mark.", "motionIcon": "" },
+    { "word": "pour into", "phrase": "Pour some water into the cup.", "translation": "Налей немного воды в чашку.", "scene": "Hand tilting a glass jug, water stream pouring into a teal mug. Downward arrow beside stream.", "motionIcon": "arrow-down" },
+    { "word": "add", "phrase": "Add some sugar.", "translation": "Добавь немного сахара.", "scene": "Spoon with white sugar directly above a mug of tea, sugar falling into tea. Downward arrow.", "motionIcon": "arrow-down" },
+    { "word": "stir", "phrase": "Stir the drink.", "translation": "Размешай напиток.", "scene": "Hand stirring tea inside a mug with a teaspoon, circular ripple and prominent circular arrow above the mug.", "motionIcon": "rotate-cw" },
+    { "word": "bring to your lips", "phrase": "Bring the cup to your lips.", "translation": "Поднеси чашку к губам.", "scene": "Side view hand moving mug to a person's closed lips, mug rim close to mouth, curved arrow pointing toward lips. Not drinking yet.", "motionIcon": "arrow-up" },
+    { "word": "take a sip", "phrase": "Take a sip.", "translation": "Сделай глоток.", "scene": "Person taking a small sip from a slightly tilted mug of tea, rim touching lips, tiny amount of liquid being drunk.", "motionIcon": "" },
+    { "word": "hot", "phrase": "Be careful, it’s hot.", "translation": "Осторожно, напиток горячий.", "scene": "Steaming mug on the table, person cautiously withdrawing fingers from hot handle. Clear steam and a red heat warning symbol.", "motionIcon": "" },
+    { "word": "drink from", "phrase": "Drink from the cup.", "translation": "Пей из чашки.", "scene": "Person drinking tea from a mug held comfortably at the mouth, relaxed upright posture, cup and hand visible.", "motionIcon": "" },
+    { "word": "finish your drink", "phrase": "Finish your drink.", "translation": "Допей свой напиток.", "scene": "Person tilting mug steeply to drink the final drops, almost empty cup interior visible, small inset shows the empty mug.", "motionIcon": "" },
+    { "word": "wash", "phrase": "Wash the cup.", "translation": "Помой чашку.", "scene": "Hands washing a teal mug with a sponge under running water over the sink. Visible soap bubbles and scrubbing motion arrow.", "motionIcon": "move-horizontal" }
+  ]
+}
