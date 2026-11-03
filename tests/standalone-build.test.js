@@ -40,6 +40,11 @@ test("standalone Cloudflare build serves the canonical UI and shared API without
   }
   const seedResponse = await worker.fetch(new Request("https://cards.example/default-cards.json?v=68"), {});
   assert.deepEqual(await seedResponse.json(), defaults);
+  for (const card of defaults.cards.filter((item) => item.id.startsWith("kitchen-dialogue-"))) {
+    const photo = await worker.fetch(new Request(`https://cards.example/${card.imageUrl}`), {});
+    assert.equal(photo.headers.get("content-type"), "image/jpeg");
+    assert.deepEqual(Buffer.from(await photo.arrayBuffer()), fs.readFileSync(path.join(root, "public", card.imageUrl)));
+  }
   const status = await worker.fetch(new Request("https://cards.example/api/status"), {});
   assert.equal((await status.json()).aiReady, false);
   const invalid = await worker.fetch(new Request("https://cards.example/api/cards", { method: "PUT", body: "null" }), {});

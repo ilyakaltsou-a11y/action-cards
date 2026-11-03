@@ -7,7 +7,7 @@ const LANGUAGE_KEY = "action-cards:language:v1";
 const POLISH_KEY = "action-cards:polish:v1";
 const ENGLISH_TRAINER_KEY = "action-cards:english-trainer:v1";
 const STUDY_SETTINGS_KEY = "action-cards:study-settings:v1";
-const DEFAULT_CARDS_URL = "default-cards.json?v=70";
+const DEFAULT_CARDS_URL = "default-cards.json?v=71";
 const STARTER_PACKS_KEY = "action-cards:starter-packs:v1";
 const BASIC_ACTIONS_PACK = "basic-actions-v1";
 const BASIC_ACTIONS_FOLDER = "Стартовые / Действия с предметами";
@@ -15,6 +15,7 @@ const STARTER_PACKS = [
   { id: BASIC_ACTIONS_PACK, prefix: "basic-action-" },
   { id: "basic-questions-v1", prefix: "basic-question-" },
   { id: "basic-cup-actions-v1", prefix: "cup-action-" },
+  { id: "kitchen-dialogues-v1", prefix: "kitchen-dialogue-" },
 ];
 const BASIC_ACTION_MOTIONS = new Map([
   ["Pick up the phone.", "arrow-up"],
@@ -101,6 +102,9 @@ const els = {
   reviewStatus: document.querySelector("#reviewStatus"),
   flashcard: document.querySelector("#flashcard"),
   studyModeButtons: document.querySelectorAll("[data-study-mode]"),
+  pictureTranslationSetting: document.querySelector("#pictureTranslationSetting"),
+  showPictureTranslation: document.querySelector("#showPictureTranslation"),
+  cardPictureTranslation: document.querySelector("#cardPictureTranslation"),
   cardFront: document.querySelector("#cardFront"),
   cardBack: document.querySelector("#cardBack"),
   cardRussianPrompt: document.querySelector("#cardRussianPrompt"),
@@ -530,6 +534,7 @@ function getLocalEnglishTrainerKey() {
 function normalizeStudySettings(settings = {}) {
   return {
     mode: settings?.mode === "russian" ? "russian" : "picture",
+    ...(settings?.showPictureTranslation === true ? { showPictureTranslation: true } : {}),
     ...(settings?.selection && typeof settings.selection === "object" ? { selection: practiceSelection.normalize(settings.selection) } : {}),
     updatedAt: Number.isFinite(settings?.updatedAt) ? Math.max(0, settings.updatedAt) : 0,
   };
@@ -1185,12 +1190,17 @@ function setVisual(element, imageUrl, fallbackText = "") {
   element.textContent = imageUrl ? "" : fallbackText;
 }
 
+function studyText(text = "") {
+  const value = String(text).trim();
+  return /[\r\n]/.test(value) ? value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).map((line) => `— ${line}`).join("\n") : value;
+}
+
 function setTranslation(text = "", hidden = true) {
   const translation = String(text).trim() || "Перевод появится у новых карточек.";
   const textElement = els.cardTranslation.querySelector(".translation-text");
   const labelElement = els.cardTranslation.querySelector(".translation-label");
 
-  textElement.textContent = translation;
+  textElement.textContent = studyText(translation);
   els.cardTranslation.classList.toggle("is-hidden", hidden);
   labelElement.textContent = hidden ? "Перевод по нажатию" : "Перевод";
   els.cardTranslation.setAttribute("aria-label", hidden ? "Показать русский перевод" : "Русский перевод открыт");
@@ -1325,7 +1335,7 @@ function renderStudy(index = state.currentIndex) {
   const motionIcon = card.motionIcon || BASIC_ACTION_MOTIONS.get(songPhraseKey(card.phrase));
   els.cardMotion.hidden = !motionIcon;
   if (motionIcon) els.cardMotionIcon.setAttribute("href", `assets/icons.svg#${motionIcon}`);
-  els.cardPhrase.textContent = card.phrase;
+  els.cardPhrase.textContent = studyText(card.phrase);
   setTranslation(card.translation, true);
   renderStudyMode();
   updateSpeechControls();
@@ -1343,6 +1353,14 @@ function setStudyMode(mode) {
 function renderStudyMode() {
   const card = currentCard();
   const russian = state.studySettings.mode === "russian" || Boolean(card?.textOnly);
+  const showCaption = !russian && Boolean(state.studySettings.showPictureTranslation && card?.imageUrl && card.translation?.trim());
+  els.pictureTranslationSetting.hidden = russian;
+  els.showPictureTranslation.checked = Boolean(state.studySettings.showPictureTranslation);
+  els.showPictureTranslation.disabled = !card;
+  els.cardPictureTranslation.hidden = !showCaption;
+  els.cardPictureTranslation.textContent = card ? studyText(card.translation) : "";
+  els.flashcard.classList.toggle("has-picture-translation", showCaption);
+  els.flashcard.classList.toggle("is-dialogue", Boolean(card?.phrase.includes("\n")));
   els.studyModeButtons.forEach((button) => {
     button.setAttribute("aria-pressed", String(button.dataset.studyMode === (russian ? "russian" : "picture")));
     button.disabled = Boolean(card?.textOnly) && button.dataset.studyMode === "picture";
@@ -1352,7 +1370,7 @@ function renderStudyMode() {
   els.cardImage.hidden = russian;
   els.cardRussianPrompt.hidden = !russian;
   els.cardRussianPrompt.textContent = card
-    ? String(card.translation || "").trim() || "У этой карточки пока нет русского перевода."
+    ? studyText(card.translation) || "У этой карточки пока нет русского перевода."
     : "Добавь карточку для тренировки.";
   els.cardPattern.hidden = !card?.patternTranslation;
   els.cardPattern.textContent = card?.patternTranslation ? `${card.word} — ${card.patternTranslation}` : "";
@@ -1774,7 +1792,7 @@ async function generateDraft() {
     return;
   }
 
-  const manualPhrase = els.manualPhraseInput.value.trim().replace(/\s+/g, " ");
+  const manualPhrase = els.manualPhraseInput.value.trim().replace(/[ \t]+/g, " ");
   const imagePreference = normalizeFreeText(els.imagePreferenceInput.value);
   if (phraseMode() === "manual" && !manualPhrase) {
     setStatus("Введи свою английскую фразу.", "warn");
@@ -3788,6 +3806,11 @@ els.cardTranslation.addEventListener("keydown", (event) => {
 });
 els.flashcard.addEventListener("click", flipCard);
 els.studyModeButtons.forEach((button) => button.addEventListener("click", () => setStudyMode(button.dataset.studyMode)));
+els.showPictureTranslation.addEventListener("change", () => {
+  state.studySettings = { ...state.studySettings, showPictureTranslation: els.showPictureTranslation.checked,
+    updatedAt: Math.max(Date.now(), state.studySettings.updatedAt + 1) };
+  renderStudy(); saveCards();
+});
 els.flashcard.addEventListener("keydown", (event) => {
   if (event.target !== els.flashcard || !["Enter", " "].includes(event.key)) return;
   event.preventDefault();

@@ -68,7 +68,7 @@ async function launch({ offline = false, saved, storedFolder = "all", exerciseRe
     if (route.includes("/api/status")) return { ok: true, json: async () => ({ aiReady: true, deepSeekReady: true }) };
     if (route === "/api/create-card") {
       const body = JSON.parse(options.body);
-      return { ok: true, json: async () => ({ word: body.word, phrase: "I carry the bag.", translation: "Я несу сумку.", imageUrl: defaults.cards[0].imageUrl }) };
+      return { ok: true, json: async () => ({ word: body.word, phrase: body.phrase || "I carry the bag.", translation: "Я несу сумку.", imageUrl: defaults.cards[0].imageUrl }) };
     }
     if (route === "/api/import-cards/prepare") {
       return { ok: true, json: async () => importPlan ? importPlan(JSON.parse(options.body)) : { cards: [], skipped: [] } };
@@ -468,6 +468,26 @@ test("cup continuation upgrades old profiles once, skips equivalent personal act
   assert.equal(reloaded.state.cards.some((card) => card.id === additions[0].id), false);
 });
 
+test("kitchen dialogues upgrade old profiles once without replacing progress or duplicating a personal dialogue", async () => {
+  const old = defaults.cards.filter((card) => !card.id.startsWith("kitchen-dialogue-"));
+  old[0] = { ...old[0], attempts: 11, correct: 9, level: 4 };
+  const source = require("../data/kitchen-dialogues.json");
+  const personal = { ...old[0], ...source.cards[0], id: "personal-greeting", attempts: 5, correct: 4 };
+  const app = await launch({ saved: { cards: [...old, personal], starterPacks: ["basic-actions-v1", "basic-questions-v1", "basic-cup-actions-v1"] } });
+  const additions = app.state.cards.filter((card) => card.id.startsWith("kitchen-dialogue-"));
+  assert.equal(additions.length, 22);
+  assert.equal(app.state.cards.find((card) => card.id === old[0].id).attempts, 11);
+  assert.equal(app.state.cards.find((card) => card.id === personal.id).attempts, 5);
+  assert.equal(app.state.cards.filter((card) => card.phrase === personal.phrase).length, 1);
+  assert.ok(additions.every((card) => card.folderPath === source.folderPath && card.imageUrl && !card.textOnly));
+  assert.ok(additions.some((card) => card.phrase.startsWith("Be careful! Don’t spill the tea.")));
+  app.state.cards = app.state.cards.filter((card) => card.id !== additions[0].id);
+  app.api.saveCards(); await app.flush();
+  const reloaded = await launch({ saved: app.getSaved() });
+  assert.equal(reloaded.state.cards.filter((card) => card.id.startsWith("kitchen-dialogue-")).length, 21);
+  assert.equal(reloaded.state.cards.some((card) => card.id === additions[0].id), false);
+});
+
 test("question starter examples do not duplicate matching personal cards", async () => {
   const personal = { ...defaults.cards.find((card) => card.id === "basic-question-001"), id: "my-question", folderPath: "Personal", attempts: 4 };
   const app = await launch({ saved: { cards: [personal], starterPacks: ["basic-actions-v1"] } });
@@ -568,6 +588,93 @@ test("Russian mode starts with Russian and flips to English with a small existin
   const restarted = await launch({ saved: app.getSaved() });
   assert.equal(restarted.state.studySettings.mode, "russian");
   assert.equal(restarted.document.getElementById("cardRussianPrompt").hidden, false);
+});
+
+test("optional picture captions show multiline Russian dialogue, flip to English and preserve the saved mode and selection", async () => {
+  const app = await launch(), doc = app.document;
+  const dialogue = require("../data/kitchen-dialogues.json").cards[0];
+  app.state.cards = [{ ...app.state.cards[0], ...dialogue, id: "dialogue-test" }];
+  app.state.studySettings.selection = { folderPaths: ["all"], cardIds: ["dialogue-test"] };
+  app.api.renderStudy(0);
+  const card = app.api.currentCard(), attempts = card.attempts;
+  const caption = doc.getElementById("cardPictureTranslation"), setting = doc.getElementById("showPictureTranslation");
+  assert.equal(caption.hidden, true);
+  setting.checked = true; setting.dispatchEvent(new app.window.Event("change", { bubbles: true }));
+  assert.equal(caption.hidden, false);
+  assert.equal(caption.textContent, dialogue.translation.split("\n").map((line) => `— ${line}`).join("\n"));
+  assert.equal(doc.getElementById("cardImage").hidden, false);
+  assert.equal(doc.getElementById("cardRussianPrompt").hidden, true);
+  assert.equal(doc.getElementById("flashcard").classList.contains("has-picture-translation"), true);
+  caption.click();
+  assert.equal(app.state.flipped, true);
+  assert.equal(doc.getElementById("cardPhrase").textContent, dialogue.phrase.split("\n").map((line) => `— ${line}`).join("\n"));
+  assert.equal(doc.getElementById("cardFront").hasAttribute("inert"), true);
+  assert.equal(card.attempts, attempts);
+  assert.equal(app.state.studySettings.mode, "picture");
+  await app.flush();
+  const restarted = await launch({ saved: app.getSaved() });
+  assert.equal(restarted.state.studySettings.showPictureTranslation, true);
+  assert.deepEqual(Array.from(restarted.state.studySettings.selection.cardIds), ["dialogue-test"]);
+  assert.equal(restarted.document.getElementById("cardPictureTranslation").hidden, false);
+  restarted.document.querySelector('[data-study-mode="russian"]').click();
+  assert.equal(restarted.document.getElementById("cardPictureTranslation").hidden, true);
+  assert.equal(restarted.document.getElementById("pictureTranslationSetting").hidden, true);
+  restarted.document.querySelector('[data-study-mode="picture"]').click();
+  assert.equal(restarted.document.getElementById("cardPictureTranslation").hidden, false);
+  const checkbox = restarted.document.getElementById("showPictureTranslation");
+  checkbox.checked = false; checkbox.dispatchEvent(new app.window.Event("change", { bubbles: true }));
+  await restarted.flush();
+  const off = await launch({ saved: restarted.getSaved() });
+  assert.equal(off.document.getElementById("cardPictureTranslation").hidden, true);
+  assert.equal(off.document.getElementById("showPictureTranslation").checked, false);
+});
+
+test("picture captions survive swipes, do not expose blank captions and never replace text-only practice", async () => {
+  const app = await launch(), doc = app.document;
+  const card = app.api.currentCard();
+  const toggle = doc.getElementById("showPictureTranslation");
+  toggle.checked = true; toggle.dispatchEvent(new app.window.Event("change", { bubbles: true }));
+  touch(app, "touchstart", 100, 100, { target: doc.getElementById("cardPictureTranslation") });
+  touch(app, "touchmove", 230, 105); touch(app, "touchend", 230, 105);
+  assert.equal(card.attempts, 1);
+  assert.notEqual(app.api.currentCard().id, card.id);
+  assert.equal(doc.getElementById("cardPictureTranslation").hidden, false);
+  app.api.currentCard().imageUrl = ""; app.api.renderStudy();
+  assert.equal(doc.getElementById("cardPictureTranslation").hidden, true);
+  app.api.currentCard().textOnly = true; app.api.renderStudy();
+  assert.equal(doc.getElementById("pictureTranslationSetting").hidden, true);
+  assert.equal(doc.getElementById("cardRussianPrompt").hidden, false);
+  app.state.cards = []; app.api.renderStudy();
+  assert.equal(doc.getElementById("cardPictureTranslation").textContent, "");
+  assert.equal(doc.getElementById("cardPictureTranslation").hidden, true);
+  assert.equal(doc.getElementById("showPictureTranslation").disabled, true);
+});
+
+test("picture-caption preference uses newest synced settings and remains isolated offline between profiles", async () => {
+  const app = await launch({ offline: true, localStudySettings: { mode: "picture", showPictureTranslation: true, updatedAt: 100 } });
+  assert.equal(app.document.getElementById("showPictureTranslation").checked, true);
+  app.document.getElementById("newProfileButton").click(); await app.flush();
+  assert.equal(app.document.getElementById("showPictureTranslation").checked, false);
+  app.document.getElementById("profileInput").value = "deck-workspace-test";
+  app.document.getElementById("loadProfileButton").click(); await app.flush();
+  assert.equal(app.document.getElementById("showPictureTranslation").checked, true);
+  const remote = await launch({ localStudySettings: { mode: "picture", showPictureTranslation: true, updatedAt: 100 },
+    saved: { cards: defaults.cards, studySettings: { mode: "picture", showPictureTranslation: false, updatedAt: 101 } } });
+  assert.equal(remote.document.getElementById("showPictureTranslation").checked, false);
+});
+
+test("editing an existing dialogue sends and retains its original separate turns", async () => {
+  const app = await launch(), doc = app.document;
+  const dialogue = require("../data/kitchen-dialogues.json").cards[0];
+  const card = { ...app.state.cards[0], ...dialogue, id: "editable-dialogue" };
+  app.state.cards.push(card);
+  app.api.startEditCard(card.id);
+  assert.equal(doc.getElementById("manualPhraseInput").value, dialogue.phrase);
+  doc.getElementById("generateButton").dispatchEvent(new app.window.Event("submit", { bubbles: true, cancelable: true }));
+  await app.flush();
+  assert.equal(app.requests.find((item) => item.route === "/api/create-card").body.phrase, dialogue.phrase);
+  doc.getElementById("saveDraftButton").click();
+  assert.equal(app.state.cards.find((item) => item.id === card.id).phrase, dialogue.phrase);
 });
 
 test("Russian-mode swipes rate exactly once and keep the next card in the chosen mode", async () => {
@@ -903,7 +1010,9 @@ test("the common dictionary preserves manual translations and whole phrases with
   assert.equal(app.document.getElementById("englishTrainerDictionarySummary").textContent, `${words.length} слов/фраз`);
   app.document.getElementById("englishTrainerDictionarySearch").value = "pick up";
   app.document.getElementById("englishTrainerDictionarySearch").dispatchEvent(new app.window.Event("input"));
-  assert.equal(app.document.querySelectorAll("#englishTrainerDictionaryList article").length, 1);
+  const matches = [...app.document.querySelectorAll("#englishTrainerDictionaryList article")];
+  assert.equal(matches.filter((row) => row.querySelector("h3").textContent === "pick up").length, 1);
+  assert.ok(matches.some((row) => row.querySelector("h3").textContent === "pick it up"));
 });
 
 test("new and edited card keywords appear automatically and all folders contribute", async () => {

@@ -7,11 +7,11 @@
     <title>Карточки действий</title>
     <script>
       if (window.location.protocol === "file:") {
-        window.location.replace(`http://127.0.0.1:5176/${window.location.search || "?v=70"}`);
+        window.location.replace(`http://127.0.0.1:5176/${window.location.search || "?v=71"}`);
       }
     </script>
     <link rel="manifest" href="manifest.webmanifest" />
-    <link rel="stylesheet" href="styles.css?v=70" />
+    <link rel="stylesheet" href="styles.css?v=71" />
   </head>
   <body>
     <div class="app-shell">
@@ -57,6 +57,10 @@
             <button type="button" data-study-mode="picture" aria-pressed="true">По картинке</button>
             <button type="button" data-study-mode="russian" aria-pressed="false">По русскому тексту</button>
           </div>
+          <label class="picture-translation-setting" id="pictureTranslationSetting">
+            <input type="checkbox" id="showPictureTranslation" />
+            <span>Русский текст под картинкой</span>
+          </label>
 
           <div class="flashcard" id="flashcard" role="button" tabindex="0" aria-label="Перевернуть карточку">
             <span class="flashcard-face flashcard-front" id="cardFront">
@@ -67,6 +71,7 @@
                 <svg aria-hidden="true"><use id="cardMotionIcon" href="assets/icons.svg#arrow-down"></use></svg>
               </span>
               <span class="phrase russian-prompt" id="cardRussianPrompt" lang="ru" hidden></span>
+              <span class="card-picture-translation" id="cardPictureTranslation" lang="ru" hidden></span>
             </span>
             <span class="flashcard-face flashcard-back" id="cardBack" aria-hidden="true" inert>
               <span class="phrase" id="cardPhrase" lang="en">No cards yet</span>
@@ -140,7 +145,7 @@
 
             <label class="word-field manual-phrase-field" id="manualPhraseField" hidden>
               <span>Моя фраза на английском</span>
-              <input id="manualPhraseInput" type="text" autocomplete="off" />
+              <textarea id="manualPhraseInput" rows="3" autocomplete="off"></textarea>
             </label>
             <label class="word-field">
               <span>Пожелания к картинке</span>
@@ -640,10 +645,10 @@
         </div>
       </section>
     </dialog>
-    <script src="modules/practice-selection.js?v=70"></script>
-    <script src="modules/card-import.js?v=70"></script>
-    <script src="modules/activity.js?v=70"></script>
-    <script src="modules/swipe.js?v=70"></script>
-    <script src="app.js?v=70"></script>
+    <script src="modules/practice-selection.js?v=71"></script>
+    <script src="modules/card-import.js?v=71"></script>
+    <script src="modules/activity.js?v=71"></script>
+    <script src="modules/swipe.js?v=71"></script>
+    <script src="app.js?v=71"></script>
   </body>
 </html>

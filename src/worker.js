@@ -854,7 +854,7 @@ async function createDetailsFromManualPhrase(env, word, phrase, imagePreference 
       {
         role: "system",
         content:
-          "Return only JSON. Convert the user's English phrase into one concrete visual scene for an educational flashcard. No text should appear in the image. Also return a clear Russian translation of the English phrase. If the learner gives visual preferences, include them only when they make the scene clearer and still match the phrase.",
+          "Return only JSON. Convert the user's English phrase into one concrete visual scene for an educational flashcard. No text should appear in the image. Also return a clear Russian translation of the English phrase. For a multiline dialogue, translate every turn and keep the same line breaks in the translation. If the learner gives visual preferences, include them only when they make the scene clearer and still match the phrase.",
       },
       { role: "user", content: JSON.stringify({ word, phrase, visualPreference: imagePreference }) },
     ],
@@ -1135,7 +1135,7 @@ async function handleCreateCard(request, env) {
     return json({ error: "Word is required" }, 400);
   }
 
-  const manualPhrase = String(body.phrase || "").trim().replace(/\s+/g, " ");
+  const manualPhrase = String(body.phrase || "").trim().replace(/[ \t]+/g, " ");
   const imagePreference = cleanPreference(body.imagePreference);
   const phraseDraft = manualPhrase
     ? { phrase: manualPhrase, ...(await createDetailsFromManualPhrase(env, word, manualPhrase, imagePreference)) }
@@ -1387,6 +1387,7 @@ function normalizeStudySettings(settings = {}) {
   const folderPaths = strings(selection?.folderPaths);
   return {
     mode: settings?.mode === "russian" ? "russian" : "picture",
+    ...(settings?.showPictureTranslation === true ? { showPictureTranslation: true } : {}),
     ...(selection && typeof selection === "object" ? { selection: {
       folderPaths: folderPaths.includes("all") ? ["all"] : folderPaths,
       cardIds: Array.isArray(selection.cardIds) ? strings(selection.cardIds) : null,

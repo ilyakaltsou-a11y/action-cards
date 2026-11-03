@@ -50,4 +50,10 @@ test(`${file}: card study mode round-trips per profile and old profiles default 
   assert.deepEqual((await call("deck-empty-selection")).studySettings.selection, { folderPaths: [], cardIds: [] });
   await call("deck-invalid-selection", { studySettings: { selection: { folderPaths: [null, "all", "Home", "all"], cardIds: ["b", 123, "a", "a"] } } });
   assert.deepEqual((await call("deck-invalid-selection")).studySettings.selection, { folderPaths: ["all"], cardIds: ["a", "b"] });
+  const captionSettings = { ...selectionSettings, showPictureTranslation: true, updatedAt: 12347 };
+  await call("deck-caption", { studySettings: captionSettings });
+  assert.deepEqual((await call("deck-caption")).studySettings, captionSettings);
+  await call("deck-caption", { studySettings: { ...captionSettings, showPictureTranslation: false, updatedAt: 12348 } });
+  assert.deepEqual((await call("deck-caption")).studySettings, { ...selectionSettings, updatedAt: 12348 });
+  assert.equal((await call("deck-other")).studySettings.showPictureTranslation, undefined);
 });

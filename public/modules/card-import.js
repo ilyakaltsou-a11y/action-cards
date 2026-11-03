@@ -5,6 +5,7 @@
 
   // These object-independent keys cover the starter actions. Unknown phrases stay distinct.
   function actionKey(phrase) {
+    if (/[\r\n]/.test(String(phrase || ""))) return "";
     const text = key(phrase).replace(/^be careful\s+/, "");
     const rules = [
       ["hold-by-handle", /^hold\b.*\bby (?:the |its )?handle\b/],

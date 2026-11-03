@@ -42,6 +42,7 @@ test("action keys preserve important differences and leave unknown meanings to A
   }
   assert.equal(api.actionKey("Leave the cup up."), api.actionKey("Leave the box up."));
   assert.equal(api.actionKey("I forgot to leave the cup there."), "");
+  assert.equal(api.actionKey("Be careful! Don’t spill the tea.\nI’ll do my best."), "");
   for (const phrase of ["Give up smoking.", "Carry out the task.", "Add up the numbers.", "Wash away the worries.", "Leave the room."]) {
     assert.equal(api.actionKey(phrase), "");
   }
