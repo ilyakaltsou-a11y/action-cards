@@ -715,6 +715,78 @@ test("question starter examples do not duplicate matching personal cards", async
   assert.equal(app.state.cards.filter((card) => card.id.startsWith("basic-question-")).length, 11);
 });
 
+test("focused study preserves reveal order, repeat is ungraded and rating buttons use existing review logic", async () => {
+  const app = await launch();
+  const doc = app.document;
+  app.api.mountainWorkspace.route("learn");
+  assert.equal(doc.body.classList.contains("is-card-session"), true);
+  const card = app.api.currentCard();
+  const order = app.state.cards.map((entry) => entry.id);
+  const before = card.attempts || 0;
+  doc.getElementById("flashcard").click();
+  assert.equal(doc.getElementById("cardAnswerImage").hidden, false);
+  assert.equal(doc.querySelector("#cardAnswerImage img").getAttribute("src"), card.imageUrl);
+  assert.equal(doc.getElementById("cardTranslation").classList.contains("is-hidden"), true);
+  doc.getElementById("cardTranslation").click();
+  doc.getElementById("repeatStudyButton").click();
+  assert.equal(app.api.currentCard().id, card.id);
+  assert.equal(app.state.flipped, false);
+  assert.equal(doc.getElementById("cardAnswerImage").hidden, true);
+  assert.equal(doc.getElementById("cardTranslation").classList.contains("is-hidden"), true);
+  assert.equal(card.attempts || 0, before);
+  assert.deepEqual(app.state.cards.map((entry) => entry.id), order);
+  doc.getElementById("againButton").click();
+  assert.equal(app.state.cards.find((entry) => entry.id === card.id).attempts, before + 1);
+  const next = app.api.currentCard(); const nextAttempts = next.attempts || 0;
+  doc.getElementById("gotItButton").click();
+  assert.equal(app.state.cards.find((entry) => entry.id === next.id).attempts, nextAttempts + 1);
+});
+
+test("focused study menu keeps library tools accessible and closes safely with Escape or mode changes", async () => {
+  const app = await launch(); const doc = app.document;
+  app.api.mountainWorkspace.route("learn");
+  const menu = doc.getElementById("studySessionOptions");
+  const escape = () => { const event = new app.window.Event("keydown", { cancelable: true }); event.key = "Escape"; app.window.dispatchEvent(event); };
+  menu.setAttribute("open", ""); escape();
+  assert.equal(menu.hasAttribute("open"), false);
+  assert.equal(doc.body.dataset.screen, "learn");
+  menu.setAttribute("open", "");
+  doc.querySelector('[data-study-command="openCreatorButton"]').click();
+  assert.equal(doc.getElementById("cardCreatorDialog").open, true);
+  assert.equal(menu.hasAttribute("open"), false);
+  escape();
+  assert.equal(doc.body.dataset.screen, "learn", "Escape belongs to the open dialog before it can close study");
+  doc.getElementById("closeCreatorButton").click();
+  menu.setAttribute("open", "");
+  doc.getElementById("sessionSentencesButton").click();
+  assert.equal(doc.body.classList.contains("is-card-session"), false);
+  assert.equal(doc.getElementById("englishSentencesPractice").hidden, false);
+  assert.equal(menu.hasAttribute("open"), false);
+  doc.getElementById("englishCardsTab").click();
+  assert.equal(doc.body.classList.contains("is-card-session"), true);
+  doc.getElementById("sessionPolishButton").click();
+  assert.equal(doc.body.classList.contains("is-card-session"), false);
+  assert.equal(doc.getElementById("polishView").hidden, false);
+  doc.getElementById("englishModeButton").click();
+  escape();
+  assert.equal(doc.body.dataset.screen, "home");
+  assert.equal(doc.body.classList.contains("is-card-session"), false);
+  app.api.mountainWorkspace.route("learn");
+  doc.getElementById("closeStudySessionButton").click();
+  assert.equal(doc.body.dataset.screen, "home");
+});
+
+test("focused study cannot grade an empty folder and does not change saved progress on entry", async () => {
+  const app = await launch(); const doc = app.document;
+  const snapshot = app.api.profileSnapshot();
+  app.api.mountainWorkspace.route("learn");
+  assert.deepEqual(app.api.profileSnapshot().data, snapshot.data);
+  app.state.activeFolder = "An empty folder";
+  app.state.studySettings.selection = { folderPaths: ["An empty folder"], cardIds: null };
+  app.api.renderStudy();
+  for (const id of ["againButton", "repeatStudyButton", "gotItButton"]) assert.equal(doc.getElementById(id).disabled, true);
+});
+
 test("picture mode retains the picture, English answer and independently revealed translation", async () => {
   const app = await launch();
   const doc = app.document;

@@ -175,6 +175,7 @@
       downloading = true; try { await downloadCards(cards, true); } catch { /* Retry remains available from the download screen. */ } finally { downloading = false; }
     }
     function render() {
+      options.onStudyView?.(screen === "learn");
       renderThemes(); const summary = options.summary(); const cards = options.getCards();
       el("homeStreak").textContent = summary.streak ? `${summary.streak} дней подряд` : "Новый день — новый шаг";
       el("homeGoalPercent").textContent = `${summary.progress}%`; el("homeGoalButton").style.setProperty("--progress", `${summary.progress * 3.6}deg`);

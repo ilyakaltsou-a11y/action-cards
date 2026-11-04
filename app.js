@@ -7,7 +7,7 @@ const LANGUAGE_KEY = "action-cards:language:v1";
 const POLISH_KEY = "action-cards:polish:v1";
 const ENGLISH_TRAINER_KEY = "action-cards:english-trainer:v1";
 const STUDY_SETTINGS_KEY = "action-cards:study-settings:v1";
-const DEFAULT_CARDS_URL = "default-cards.json?v=75";
+const DEFAULT_CARDS_URL = "default-cards.json?v=76";
 const STARTER_PACKS_KEY = "action-cards:starter-packs:v1";
 const BASIC_ACTIONS_PACK = "basic-actions-v1";
 const BASIC_ACTIONS_FOLDER = "Стартовые / Действия с предметами";
@@ -98,6 +98,7 @@ const state = {
 };
 
 let mountainWorkspace;
+let studySession;
 
 const els = {
   studyTitle: document.querySelector("#studyTitle"),
@@ -330,6 +331,14 @@ const { prepare: prepareActivity, recordStudy: recordStudyActivity, hasChosenGoa
 const swipes = globalThis.ActionCardsSwipe.createSwipeController({
   element: els.flashcard, eventTarget: window,
   hasCard: () => Boolean(currentCard()), onRate: rateCard,
+});
+studySession = globalThis.ActionCardsStudySession.create({
+  document, eventTarget: window, getCard: currentCard,
+  onClose: () => { swipes.cancel(); mountainWorkspace.route("home"); },
+  onRepeat: () => renderStudy(),
+  onSentences: () => setEnglishPractice("sentences"),
+  onPolish: () => setLanguage("polish"),
+  onCommand: (id) => document.getElementById(id).click(),
 });
 
 function normalizeWord(value) {
@@ -1249,6 +1258,13 @@ function setVisual(element, imageUrl, fallbackText = "") {
   element.textContent = imageUrl ? "" : fallbackText;
 }
 
+function setStudyVisual(element, imageUrl, fallbackText = "") {
+  setVisual(element, imageUrl, fallbackText);
+  if (!imageUrl) return;
+  const image = document.createElement("img"); image.className = "study-illustration"; image.src = imageUrl; image.alt = ""; image.draggable = false;
+  element.appendChild(image);
+}
+
 function studyText(text = "") {
   const value = String(text).trim();
   return /[\r\n]/.test(value) ? value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).map((line) => `— ${line}`).join("\n") : value;
@@ -1372,7 +1388,7 @@ function renderStudy(index = state.currentIndex) {
     els.reviewStatus.textContent = state.cards.length ? folderLabel(state.activeFolder) : "0 карточек";
     els.flashcard.classList.remove("is-flipped");
     els.flashcard.style.transform = "";
-    setVisual(els.cardImage, "", "Картинка появится здесь");
+    setStudyVisual(els.cardImage, "", "Картинка появится здесь");
     els.cardMotion.hidden = true;
     els.cardPhrase.textContent = "No cards yet";
     setTranslation("", true);
@@ -1391,7 +1407,7 @@ function renderStudy(index = state.currentIndex) {
   els.reviewStatus.textContent = reviewLabel(card);
   els.flashcard.classList.remove("is-flipped");
   els.flashcard.style.transform = "";
-  setVisual(els.cardImage, card.imageUrl, "Нет картинки");
+  setStudyVisual(els.cardImage, card.imageUrl, "Нет картинки");
   const motionIcon = card.motionIcon || BASIC_ACTION_MOTIONS.get(songPhraseKey(card.phrase));
   els.cardMotion.hidden = !motionIcon;
   if (motionIcon) els.cardMotionIcon.setAttribute("href", `assets/icons.svg#${motionIcon}`);
@@ -1434,14 +1450,15 @@ function renderStudyMode() {
     : "Добавь карточку для тренировки.";
   els.cardPattern.hidden = !card?.patternTranslation;
   els.cardPattern.textContent = card?.patternTranslation ? `${card.word} — ${card.patternTranslation}` : "";
-  els.cardAnswerImage.hidden = !russian || card?.textOnly || !card?.imageUrl;
-  setVisual(els.cardAnswerImage, russian ? card?.imageUrl : "");
+  setStudyVisual(els.cardAnswerImage, card?.imageUrl);
   els.cardTranslation.hidden = russian;
   if (russian) els.cardMotion.hidden = true;
   updateCardFaceAccessibility();
 }
 
 function updateCardFaceAccessibility() {
+  const card = currentCard();
+  els.cardAnswerImage.hidden = !state.flipped || Boolean(card?.textOnly) || !card?.imageUrl;
   els.cardFront.setAttribute("aria-hidden", String(state.flipped));
   els.cardBack.setAttribute("aria-hidden", String(!state.flipped));
   els.cardFront.toggleAttribute("inert", state.flipped);
@@ -2733,6 +2750,11 @@ function setEnglishPractice(practice) {
   els.englishCardsTab.setAttribute("aria-pressed", String(cards));
   els.englishSentencesTab.setAttribute("aria-pressed", String(!cards));
   if (!cards) renderEnglishTrainer();
+  renderStudySession();
+}
+
+function renderStudySession(active = document.body.dataset.screen === "learn") {
+  studySession.render(active && state.language === "english" && state.englishPractice === "cards");
 }
 
 function openCreatorDialog() {
@@ -4217,6 +4239,7 @@ mountainWorkspace = globalThis.MountainWorkspace.create({
   document, storage: localStorage, getProfile: () => state.profileId, getData: () => state.workspace,
   getCards: () => state.cards, getFolders: getAllFolders, cardFolder, currentCard,
   getActivity: () => state.activity, summary: () => activityTracker.summary(),
+  onStudyView: renderStudySession,
   getLanguage: () => state.language,
   getWords: (language) => language === "english" ? englishTrainerWords() : normalizePolishState(state.polish).words,
   onWordsExercise: createNotesWordExercise,

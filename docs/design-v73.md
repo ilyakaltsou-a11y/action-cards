@@ -76,3 +76,11 @@ The generated single-file Worker embeds all images and is much larger; the asset
 - Missing evidence, incomplete texts and exact recent repeats trigger automatic repair with concrete feedback. At most three DeepSeek calls are made, each with a 30-second timeout; validation rejection returns HTTP 422 and is not automatically resubmitted by the browser.
 - Exhausted repair keeps the selection and previous exercise intact. No image generation or OpenAI fallback is used by this flow.
 - Git tag `v74` remains the previous rollback point.
+
+## v76 Focused Study
+
+- Card practice opens a rounded glass study tool over the blurred selected landscape. Global navigation stays outside the session; Close returns to Home, and the top menu retains folders, both reveal modes, the optional Russian caption, library tools, sentence practice and Polish.
+- Pictures remain fully contained rather than cropped. Picture mode reveals English on tap and Russian only through the separate translation control. Russian-first and text-only question cards retain their existing flow. Long answers scroll inside the fixed study area.
+- The three round controls are Hard, Repeat and Easy. Hard/Easy call the existing review actions, exactly like left/right swipes. Repeat resets the same card without changing its grade, position or activity count.
+- Session controls live in `public/modules/study-session.js`, loaded before `app.js` and included in the offline shell. Existing touch axis-lock and mouse swipe logic is unchanged. No profile schema or API change is required.
+- Git tag `v75` is the rollback point before this screen update. GitHub source saves remain separate from production publication.
