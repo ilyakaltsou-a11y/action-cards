@@ -94,6 +94,13 @@ export default {
         return await handleSaveCards(request, env);
       }
 
+      if (request.method === "GET" && url.pathname === "/api/backups") {
+        return await handleProfileBackups(url, env);
+      }
+      if (request.method === "POST" && url.pathname === "/api/backups/image") {
+        return await handleRestoreImage(request, env);
+      }
+
       if (request.method === "GET" && url.pathname.startsWith("/images/")) {
         return await handleImage(url, env);
       }
@@ -1420,6 +1427,7 @@ async function handleSaveCards(request, env) {
   if (!profile) {
     return json({ error: "Profile is required" }, 400);
   }
+  if (body.cards != null && !Array.isArray(body.cards)) return json({ error: "Invalid cards" }, 400);
 
   const cards = Array.isArray(body.cards) ? body.cards : [];
   const starterPacks = Array.isArray(body.starterPacks) ? body.starterPacks.filter((pack) => typeof pack === "string") : [];
@@ -1428,11 +1436,53 @@ async function handleSaveCards(request, env) {
   const activity = body.activity && typeof body.activity === "object" ? body.activity : { days: {}, updatedAt: 0 };
   const englishTrainer = body.englishTrainer && typeof body.englishTrainer === "object" ? body.englishTrainer : { words: [], exercises: [], currentExercise: null };
   const polish = body.polish && typeof body.polish === "object" ? body.polish : { words: [], exercises: [], currentExercise: null };
+  await checkpointProfile(env, profile);
+  const savedAt = new Date().toISOString();
   await env.CARDS_KV.put(
     `profile:${profile}`,
-    JSON.stringify({ cards, starterPacks, studySettings, folders, activity, englishTrainer, polish, updatedAt: new Date().toISOString() })
+    JSON.stringify({ cards, starterPacks, studySettings, folders, activity, englishTrainer, polish, updatedAt: savedAt })
   );
-  return json({ ok: true });
+  return json({ ok: true, savedAt });
+}
+
+async function checkpointProfile(env, profile) {
+  const day = Math.floor(Date.now() / 86400000);
+  const date = new Date().toISOString().slice(0, 10);
+  const key = `backup:${profile}:${day % 7}`;
+  const existing = await env.CARDS_KV.get(key, "json");
+  if (existing?.date === date) return;
+  const previous = await env.CARDS_KV.get(`profile:${profile}`, "json");
+  if (!previous || (!previous.cards?.length && !previous.englishTrainer?.words?.length && !previous.polish?.words?.length && !previous.folders?.length)) return;
+  // Save before replacing the live profile; seven rotating slots bound storage use.
+  await env.CARDS_KV.put(key, JSON.stringify({ date, createdAt: new Date().toISOString(), data: previous }));
+}
+
+async function handleProfileBackups(url, env) {
+  const profile = cleanProfile(url.searchParams.get("profile"));
+  if (!profile) return json({ error: "Profile is required" }, 400);
+  const date = url.searchParams.get("date");
+  if (date && (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(date)) || Date.parse(date) < 0)) return json({ error: "Invalid backup date" }, 400);
+  const slots = date ? [Math.floor(Date.parse(date) / 86400000) % 7] : [0, 1, 2, 3, 4, 5, 6];
+  const backups = (await Promise.all(slots.map((slot) => env.CARDS_KV.get(`backup:${profile}:${slot}`, "json"))))
+    .filter((item) => item?.data && (!date || item.date === date));
+  if (date) {
+    if (!backups.length) return json({ error: "Backup not found" }, 404);
+    return json({ format: "action-cards-backup", version: 1, profile, createdAt: backups[0].createdAt, data: { ...backups[0].data, folders: backups[0].data.folders || [] } });
+  }
+  return json({ backups: backups.map((item) => ({ date: item.date, createdAt: item.createdAt, count: item.data.cards?.length || 0 })).sort((a, b) => b.date.localeCompare(a.date)) });
+}
+
+async function handleRestoreImage(request, env) {
+  const body = await readJson(request);
+  const data = String(body.dataUrl || "");
+  if (data.length > 8 * 1024 * 1024) return json({ error: "Backup image too large" }, 400);
+  const match = /^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/]+={0,2})$/.exec(data);
+  if (!cleanProfile(body.profile) || !match || match[2].length % 4) return json({ error: "Invalid backup image" }, 400);
+  const bytes = Uint8Array.from(atob(match[2]), (char) => char.charCodeAt(0));
+  const hash = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  const key = `restored-${hash}.${match[1] === "jpeg" ? "jpg" : match[1]}`;
+  if (!await env.CARDS_KV.get(`image:${key}`, "arrayBuffer")) await env.CARDS_KV.put(`image:${key}`, bytes.buffer);
+  return json({ imageUrl: `/images/${key}` });
 }
 
 async function handleImage(url, env) {
@@ -1448,7 +1498,7 @@ async function handleImage(url, env) {
 
   return new Response(image, {
     headers: {
-      "Content-Type": "image/png",
+      "Content-Type": key.endsWith(".jpg") ? "image/jpeg" : key.endsWith(".webp") ? "image/webp" : "image/png",
       "Cache-Control": "public, max-age=31536000, immutable",
     },
   });

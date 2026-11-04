@@ -8,7 +8,9 @@ function createFileStorage(root) {
   function location(key) {
     const profile = /^profile:([a-z0-9-]{1,32})$/.exec(key);
     if (profile) return path.join(root, "data", "profiles", `${profile[1]}.json`);
-    const image = /^image:([a-z0-9-]+\.png)$/.exec(key);
+    const backup = /^backup:([a-z0-9-]{1,32}):([0-6])$/.exec(key);
+    if (backup) return path.join(root, "data", "profiles", "backups", backup[1], `${backup[2]}.json`);
+    const image = /^image:([a-z0-9-]+\.(?:png|jpg|webp))$/.exec(key);
     if (image) return path.join(root, "assets", "ai", image[1]);
     throw new Error("Invalid storage key");
   }

@@ -12,6 +12,8 @@
     "check": "node scripts/check.js",
     "sync:browser": "node scripts/sync-browser.js",
     "build:worker": "node scripts/build-standalone.js",
+    "build": "npm run check && npm test",
+    "deploy": "npx --yes wrangler@4.157.0 deploy",
     "test": "node --test tests/*.test.js"
   },
   "devDependencies": {

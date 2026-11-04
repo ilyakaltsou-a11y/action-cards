@@ -7,13 +7,14 @@ const { parseHTML } = require("linkedom");
 const root = path.resolve(__dirname, "..");
 const defaults = JSON.parse(fs.readFileSync(path.join(root, "public/default-cards.json")));
 
-async function launch({ offline = false, saved, storedFolder = "all", exerciseResponse, localStudySettings, importPlan, importImage, beforeSave } = {}) {
+async function launch({ offline = false, saved, storedFolder = "all", exerciseResponse, localStudySettings, importPlan, importImage, beforeSave, initialStorage = [], failLocalSave = false } = {}) {
   const { document, window } = parseHTML(fs.readFileSync(path.join(root, "public/index.html"), "utf8"));
-  const storage = new Map([["action-cards:folder:v1", storedFolder]]);
+  const storage = new Map([["action-cards:folder:v1", storedFolder], ...initialStorage]);
+  let offlineNow = offline;
   if (localStudySettings) storage.set("action-cards:study-settings:v1:deck-workspace-test", JSON.stringify(localStudySettings));
   const localStorage = {
     getItem: (key) => storage.get(key) || null,
-    setItem: (key, value) => storage.set(key, String(value)),
+    setItem: (key, value) => { if (failLocalSave && key.includes(":snapshot:")) throw new Error("Quota exceeded"); storage.set(key, String(value)); },
     removeItem: (key) => storage.delete(key),
     key: (index) => [...storage.keys()][index],
     get length() { return storage.size; },
@@ -64,7 +65,7 @@ async function launch({ offline = false, saved, storedFolder = "all", exerciseRe
     const route = String(url);
     requests.push({ route, body: options.body && JSON.parse(options.body) });
     if (route.includes("default-cards.json")) return { ok: true, json: async () => structuredClone(defaults) };
-    if (offline) throw new Error("Server unavailable");
+    if (offlineNow) throw new Error("Server unavailable");
     if (route.includes("/api/status")) return { ok: true, json: async () => ({ aiReady: true, deepSeekReady: true }) };
     if (route === "/api/create-card") {
       const body = JSON.parse(options.body);
@@ -109,14 +110,72 @@ async function launch({ offline = false, saved, storedFolder = "all", exerciseRe
   vm.createContext(sandbox);
   for (const script of document.querySelectorAll("script[src]")) {
     const file = script.getAttribute("src").split("?")[0];
-    const testApi = file === "app.js" ? "\nglobalThis.testApi = { state, swipes, activityTracker, renderStudy, loadServerCards, saveCards, startEditCard, currentCard, englishTrainerWords, mergeEnglishTrainerWords, renderEnglishTrainer, removeEnglishTrainerWord, boostEnglishTrainerWord, englishTrainerVocabularyForExercise, fetchEnglishTrainerExercise, englishExerciseTextsMatch, normalizeEnglishTrainerState, mergeEnglishTrainerState, renameFolder, deleteFolder };" : "";
+    const testApi = file === "app.js" ? "\nglobalThis.testApi = { state, swipes, activityTracker, renderStudy, loadServerCards, loadLocalCards, saveCards, restoreProfileCopy, profileSnapshot, startEditCard, currentCard, englishTrainerWords, mergeEnglishTrainerWords, renderEnglishTrainer, removeEnglishTrainerWord, boostEnglishTrainerWord, englishTrainerVocabularyForExercise, fetchEnglishTrainerExercise, englishExerciseTextsMatch, normalizeEnglishTrainerState, mergeEnglishTrainerState, renameFolder, deleteFolder };" : "";
     vm.runInContext(fs.readFileSync(path.join(root, "public", file), "utf8") + testApi, sandbox, { filename: file });
   }
   const flush = async () => { for (let index = 0; index < 10; index += 1) await new Promise(setImmediate); };
   await flush();
   document.querySelector('[data-goal-mode="medium"]').click();
-  return { document, window, state: sandbox.testApi.state, swipe: sandbox.testApi.swipes, api: sandbox.testApi, requests, listeners, flush, advanceTime: (milliseconds) => { clockOffset += milliseconds; }, getSaved: () => remote };
+  return { document, window, state: sandbox.testApi.state, swipe: sandbox.testApi.swipes, api: sandbox.testApi, requests, listeners, flush, storage, setOffline: (value) => { offlineNow = value; }, advanceTime: (milliseconds) => { clockOffset += milliseconds; }, getSaved: () => remote };
 }
+
+test("offline edits survive reload and resend automatically when connection returns", async () => {
+  const app = await launch({ offline: true });
+  app.state.cards.push({ ...defaults.cards[0], id: "offline-personal", phrase: "My offline card." });
+  app.api.saveCards(); await app.flush();
+  assert.ok(app.storage.get("action-cards:pending:v1:deck-workspace-test"));
+  const next = await launch({ offline: true, initialStorage: [...app.storage] });
+  assert.ok(next.state.cards.some((card) => card.id === "offline-personal"));
+  assert.match(next.document.getElementById("saveState").textContent, /устройстве/);
+  next.setOffline(false);
+  next.window.dispatchEvent(new next.window.Event("online")); await next.flush();
+  assert.ok(next.getSaved().cards.some((card) => card.id === "offline-personal"));
+  assert.equal(next.storage.get("action-cards:pending:v1:deck-workspace-test"), undefined);
+  assert.equal(next.document.getElementById("saveState").textContent, "Сохранено");
+});
+
+test("restore adds missing cards, folders and both dictionaries without erasing current cards", async () => {
+  const app = await launch();
+  const copy = JSON.parse(JSON.stringify(app.api.profileSnapshot()));
+  copy.data.cards = [{ ...defaults.cards[0], id: "restored-personal", phrase: "A restored card.", attempts: 4 }];
+  copy.data.folders = ["Restored"];
+  copy.data.polish = { words: [{ id: "pl-dom", word: "dom", translation: "дом" }] };
+  copy.data.englishTrainer = { words: [{ id: "en-home", word: "home", translation: "дом" }] };
+  const before = app.state.cards.length;
+  await app.api.restoreProfileCopy(copy); await app.flush();
+  assert.equal(app.state.cards.length, before + 1);
+  assert.ok(app.state.cards.some((card) => card.id === "restored-personal" && card.attempts === 4));
+  assert.ok(app.state.polish.words.some((word) => word.word === "dom"));
+  assert.ok(app.state.englishTrainer.words.some((word) => word.word === "home"));
+  assert.ok(app.state.folders.includes("Restored"));
+  assert.ok(JSON.parse(app.storage.get("action-cards:backups:v1:deck-workspace-test")).length);
+  assert.equal(app.getSaved().cards.length, before + 1);
+  const after = app.state.cards.length;
+  await assert.rejects(app.api.restoreProfileCopy({ broken: true }));
+  assert.equal(app.state.cards.length, after);
+  const differentProfile = JSON.parse(JSON.stringify(app.api.profileSnapshot()));
+  differentProfile.data.cards = [{ ...app.state.cards[0], id: "another-profile-starter" }];
+  await app.api.restoreProfileCopy(differentProfile); await app.flush();
+  assert.equal(app.state.cards.length, after, "restoring another profile must not duplicate matching starter phrases");
+});
+
+test("a corrupt compatibility entry cannot erase the atomic snapshot or other dictionaries", async () => {
+  const app = await launch();
+  app.state.polish.words.push({ id: "saved-pl", word: "dom", translation: "дом" });
+  app.api.saveCards(); await app.flush();
+  const count = app.state.cards.length;
+  app.storage.set("action-cards:cards:v1:deck-workspace-test", "broken");
+  app.api.loadLocalCards();
+  assert.equal(app.state.cards.length, count);
+  assert.ok(app.state.polish.words.some((word) => word.word === "dom"));
+});
+
+test("full browser storage is surfaced instead of claiming local save success", async () => {
+  const app = await launch({ offline: true, failLocalSave: true });
+  app.api.saveCards(); await app.flush();
+  assert.equal(app.state.localSaveFailed, true);
+  assert.match(app.document.getElementById("saveState").textContent, /Не сохранено/);
+});
 
 function pointer(app, type, x, y, overrides = {}, target = app.document.getElementById("flashcard")) {
   const event = new app.window.Event(type, { bubbles: true, cancelable: true });

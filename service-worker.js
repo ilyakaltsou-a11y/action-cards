@@ -1,4 +1,4 @@
-const CACHE_NAME = "action-cards:v71";
+const CACHE_NAME = "action-cards:v72";
 const ASSETS = [
   "./",
   "./index.html",
@@ -8,6 +8,7 @@ const ASSETS = [
   "./modules/swipe.js",
   "./modules/practice-selection.js",
   "./modules/card-import.js",
+  "./modules/profile-backup.js",
   "./default-cards.json",
   "./manifest.webmanifest",
   "./icon.svg",

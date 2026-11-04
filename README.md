@@ -70,6 +70,10 @@ The production version can run as a Cloudflare Worker. Required Worker secrets:
 - `OPENAI_API_KEY`
 - `DEEPSEEK_API_KEY`
 
+Automatic GitHub deployment and profile recovery: [setup and recovery guide](docs/cloudflare-deployment.md).
+The existing Worker can use Workers Builds with `main`, build command `npm run build`, and deploy command `npm run deploy`.
+This connection must be enabled once in Cloudflare; pushing source alone does not enable deployment.
+
 For manual Worker copy-paste deployment, build:
 
 ```sh

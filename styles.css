@@ -2707,6 +2707,16 @@ h3,
   text-align: center;
 }
 
+.save-state { margin: 4px 0 0; font-size: 12px; line-height: 1.4; font-weight: 400; color: #45675a; }
+.save-state[data-state="warn"] { color: #91531e; }
+.backup-settings { margin-top: 20px; padding-top: 20px; border-top: 1px solid #d9ddd8; display: grid; gap: 12px; }
+.backup-settings h3, .backup-settings p { margin: 0; }
+.backup-settings label { display: grid; gap: 8px; min-width: 0; }
+.backup-settings select { width: 100%; min-width: 0; min-height: 48px; padding: 10px 12px; border: 1px solid #d9ddd8; border-radius: 8px; background: #fffdfa; color: #242b27; font: inherit; font-size: 14px; }
+.backup-settings .soft-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-size: 14px; }
+.backup-settings svg { width: 18px; height: 18px; flex: 0 0 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+#backupStatus { font-size: 14px; overflow-wrap: anywhere; }
+
 .picture-translation-setting {
   display: flex;
   align-items: center;

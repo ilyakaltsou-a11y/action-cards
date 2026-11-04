@@ -7,11 +7,11 @@
     <title>Карточки действий</title>
     <script>
       if (window.location.protocol === "file:") {
-        window.location.replace(`http://127.0.0.1:5176/${window.location.search || "?v=71"}`);
+        window.location.replace(`http://127.0.0.1:5176/${window.location.search || "?v=72"}`);
       }
     </script>
     <link rel="manifest" href="manifest.webmanifest" />
-    <link rel="stylesheet" href="styles.css?v=71" />
+    <link rel="stylesheet" href="styles.css?v=72" />
   </head>
   <body>
     <div class="app-shell">
@@ -23,6 +23,7 @@
         <div>
           <p class="eyebrow">English by pictures</p>
           <h1>Карточки действий</h1>
+          <p class="save-state" id="saveState" role="status" aria-live="polite">Проверяем сохранение…</p>
         </div>
         <div class="header-actions">
           <button class="install-button" id="installButton" type="button" hidden aria-label="Установить приложение">+</button>
@@ -485,6 +486,17 @@
           </div>
           <p>Для другого устройства введи тот же код. Для семьи или друзей создай отдельный код.</p>
         </div>
+        <section class="backup-settings" aria-labelledby="backupTitle">
+          <h3 id="backupTitle">Резервные копии</h3>
+          <div class="profile-actions">
+            <button class="soft-button" id="downloadBackupButton" type="button"><svg aria-hidden="true"><use href="assets/icons.svg#arrow-down-to-line"></use></svg>Скачать копию</button>
+            <button class="soft-button" id="importBackupButton" type="button"><svg aria-hidden="true"><use href="assets/icons.svg#arrow-up-from-line"></use></svg>Из файла</button>
+            <input type="file" id="backupFileInput" accept="application/json,.json" hidden />
+          </div>
+          <label><span>Сохранённые версии</span><select id="backupSelect"><option value="">Нет копий</option></select></label>
+          <button class="soft-button" id="restoreBackupButton" type="button" disabled>Восстановить</button>
+          <p id="backupStatus" role="status" aria-live="polite"></p>
+        </section>
       </section>
     </dialog>
 
@@ -645,10 +657,11 @@
         </div>
       </section>
     </dialog>
-    <script src="modules/practice-selection.js?v=71"></script>
-    <script src="modules/card-import.js?v=71"></script>
-    <script src="modules/activity.js?v=71"></script>
-    <script src="modules/swipe.js?v=71"></script>
-    <script src="app.js?v=71"></script>
+    <script src="modules/practice-selection.js?v=72"></script>
+    <script src="modules/card-import.js?v=72"></script>
+    <script src="modules/activity.js?v=72"></script>
+    <script src="modules/swipe.js?v=72"></script>
+    <script src="modules/profile-backup.js?v=72"></script>
+    <script src="app.js?v=72"></script>
   </body>
 </html>

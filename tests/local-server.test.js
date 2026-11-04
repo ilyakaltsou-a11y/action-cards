@@ -32,6 +32,28 @@ function jsonBody(body, method = "POST") {
   return { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) };
 }
 
+test("profile backups use private local slots and imported images round-trip without AI", async (t) => {
+  const app = await fixture(t);
+  const body = { profile: "deck-backup-42", cards: [{ id: "old", phrase: "Hello" }], folders: ["Mine"] };
+  assert.equal((await app.fetch("/api/cards", jsonBody(body, "PUT"))).status, 200);
+  assert.equal((await app.fetch("/api/cards", jsonBody({ ...body, cards: [] }, "PUT"))).status, 200);
+  const list = await (await app.fetch("/api/backups?profile=deck-backup-42")).json();
+  assert.equal(list.backups.length, 1);
+  assert.equal(list.backups[0].count, 1);
+  const copy = await (await app.fetch(`/api/backups?profile=deck-backup-42&date=${list.backups[0].date}`)).json();
+  assert.equal(copy.data.cards[0].id, "old");
+  assert.equal((await app.fetch("/data/profiles/backups/deck-backup-42/0.json")).status, 404);
+  const dataUrl = "data:image/png;base64,iVBORw0KGgo=";
+  const image = await (await app.fetch("/api/backups/image", jsonBody({ profile: body.profile, dataUrl }))).json();
+  assert.match(image.imageUrl, /^\/images\/restored-[a-f0-9]+\.png$/);
+  const response = await app.fetch(image.imageUrl);
+  assert.equal(response.headers.get("content-type"), "image/png");
+  assert.equal(Buffer.from(await response.arrayBuffer()).toString("base64"), dataUrl.split(",")[1]);
+  const again = await (await app.fetch("/api/backups/image", jsonBody({ profile: body.profile, dataUrl }))).json();
+  assert.equal(again.imageUrl, image.imageUrl);
+  assert.equal((await app.fetch("/api/backups/image", jsonBody({ profile: body.profile, dataUrl: "data:text/html;base64,YQ==" }))).status, 400);
+});
+
 test("local HTTP serves only public assets and retains legacy generated images", async (t) => {
   const app = await fixture(t);
   await fs.writeFile(path.join(app.root, "assets/ai/old.png"), Buffer.from([1, 2, 3]));

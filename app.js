@@ -7,7 +7,7 @@ const LANGUAGE_KEY = "action-cards:language:v1";
 const POLISH_KEY = "action-cards:polish:v1";
 const ENGLISH_TRAINER_KEY = "action-cards:english-trainer:v1";
 const STUDY_SETTINGS_KEY = "action-cards:study-settings:v1";
-const DEFAULT_CARDS_URL = "default-cards.json?v=71";
+const DEFAULT_CARDS_URL = "default-cards.json?v=72";
 const STARTER_PACKS_KEY = "action-cards:starter-packs:v1";
 const BASIC_ACTIONS_PACK = "basic-actions-v1";
 const BASIC_ACTIONS_FOLDER = "Стартовые / Действия с предметами";
@@ -197,6 +197,13 @@ const els = {
   openSettingsButton: document.querySelector("#openSettingsButton"),
   closeSettingsButton: document.querySelector("#closeSettingsButton"),
   settingsDialog: document.querySelector("#settingsDialog"),
+  saveState: document.querySelector("#saveState"),
+  downloadBackupButton: document.querySelector("#downloadBackupButton"),
+  importBackupButton: document.querySelector("#importBackupButton"),
+  backupFileInput: document.querySelector("#backupFileInput"),
+  backupSelect: document.querySelector("#backupSelect"),
+  restoreBackupButton: document.querySelector("#restoreBackupButton"),
+  backupStatus: document.querySelector("#backupStatus"),
   closeActivityButton: document.querySelector("#closeActivityButton"),
   activityDialog: document.querySelector("#activityDialog"),
   goalDialog: document.querySelector("#goalDialog"),
@@ -598,17 +605,23 @@ function initProfile() {
 }
 
 function loadLocalCards() {
+  state.localSaveFailed = false;
   state.studySettings = normalizeStudySettings();
+  const snapshot = globalThis.ProfileBackup.read(localStorage, state.profileId)?.data;
+  const read = (key, field, fallback) => {
+    if (snapshot) return snapshot[field] ?? fallback;
+    try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; }
+  };
   try {
-    state.studySettings = normalizeStudySettings(JSON.parse(localStorage.getItem(`${STUDY_SETTINGS_KEY}:${state.profileId}`) || "{}"));
-    state.starterPacks = normalizeStarterPacks(JSON.parse(localStorage.getItem(`${STARTER_PACKS_KEY}:${state.profileId}`) || "[]"));
-    const savedCards = JSON.parse(localStorage.getItem(getLocalCardsKey())) || [];
-    state.cards = savedCards.map(hydrateCard);
-    const savedFolders = JSON.parse(localStorage.getItem(getLocalFoldersKey())) || [];
+    state.studySettings = normalizeStudySettings(read(`${STUDY_SETTINGS_KEY}:${state.profileId}`, "studySettings", {}));
+    state.starterPacks = normalizeStarterPacks(read(`${STARTER_PACKS_KEY}:${state.profileId}`, "starterPacks", []));
+    const savedCards = read(getLocalCardsKey(), "cards", []);
+    state.cards = (Array.isArray(savedCards) ? savedCards : []).filter((card) => card && typeof card === "object").map(hydrateCard);
+    const savedFolders = read(getLocalFoldersKey(), "folders", []);
     state.folders = Array.isArray(savedFolders) ? savedFolders.map(normalizeFolderPath).filter(Boolean) : [];
-    state.activity = normalizeActivity(JSON.parse(localStorage.getItem(getLocalActivityKey()) || "{}"));
-    state.englishTrainer = normalizeEnglishTrainerState(JSON.parse(localStorage.getItem(getLocalEnglishTrainerKey()) || "{}"));
-    state.polish = normalizePolishState(JSON.parse(localStorage.getItem(getLocalPolishKey()) || "{}"));
+    state.activity = normalizeActivity(read(getLocalActivityKey(), "activity", {}));
+    state.englishTrainer = normalizeEnglishTrainerState(read(getLocalEnglishTrainerKey(), "englishTrainer", {}));
+    state.polish = normalizePolishState(read(getLocalPolishKey(), "polish", {}));
   } catch {
     state.cards = [];
     state.folders = [];
@@ -619,9 +632,12 @@ function loadLocalCards() {
 }
 
 async function loadServerCards() {
-  const response = await fetch(`/api/cards?profile=${encodeURIComponent(state.profileId)}`, { cache: "no-store" });
+  const profile = state.profileId;
+  if (localStorage.getItem(pendingSaveKey(profile)) && !await syncCardsToServer({ force: true })) throw new Error("Pending save unavailable");
+  const response = await fetch(`/api/cards?profile=${encodeURIComponent(profile)}`, { cache: "no-store" });
   if (!response.ok) throw new Error("cards sync failed");
   const data = await response.json();
+  if (state.profileId !== profile) return;
   if (Array.isArray(data.cards)) {
     const localCards = [...state.cards];
     const serverCards = data.cards.map(hydrateCard);
@@ -645,6 +661,7 @@ async function loadServerCards() {
     await ensureStarterCards();
     persistCardsLocally();
     state.profileSyncReady = true;
+    setSaveState("Сохранено", "ok");
     renderStudy(0);
     renderEnglishTrainer();
     renderPolish();
@@ -690,6 +707,7 @@ async function loadOfflineStarterCards() {
   await ensureStarterCards();
   persistCardsLocally();
   renderStudy();
+  setSaveState("На устройстве · нет связи с сервером", "warn");
 }
 
 async function startBasicActions() {
@@ -741,19 +759,39 @@ async function loadStarterCards(pack = "") {
 }
 
 function persistCardsLocally() {
-  localStorage.setItem(`${STUDY_SETTINGS_KEY}:${state.profileId}`, JSON.stringify(state.studySettings));
-  localStorage.setItem(`${STARTER_PACKS_KEY}:${state.profileId}`, JSON.stringify(state.starterPacks));
-  localStorage.setItem(getLocalCardsKey(), JSON.stringify(state.cards));
-  localStorage.setItem(getLocalFoldersKey(), JSON.stringify(getAllFolders()));
-  localStorage.setItem(getLocalActivityKey(), JSON.stringify(state.activity));
-  localStorage.setItem(getLocalEnglishTrainerKey(), JSON.stringify(state.englishTrainer));
-  localStorage.setItem(getLocalPolishKey(), JSON.stringify(state.polish));
+  try {
+    globalThis.ProfileBackup.write(localStorage, state.profileId, profileSnapshot());
+  } catch {
+    state.localSaveFailed = true;
+    setSaveState("Не сохранено на устройстве · память заполнена", "warn");
+    return false;
+  }
+  // Compatibility keys are retained for older clients; the envelope above is atomic.
+  try {
+    localStorage.setItem(`${STUDY_SETTINGS_KEY}:${state.profileId}`, JSON.stringify(state.studySettings));
+    localStorage.setItem(`${STARTER_PACKS_KEY}:${state.profileId}`, JSON.stringify(state.starterPacks));
+    localStorage.setItem(getLocalCardsKey(), JSON.stringify(state.cards));
+    localStorage.setItem(getLocalFoldersKey(), JSON.stringify(getAllFolders()));
+    localStorage.setItem(getLocalActivityKey(), JSON.stringify(state.activity));
+    localStorage.setItem(getLocalEnglishTrainerKey(), JSON.stringify(state.englishTrainer));
+    localStorage.setItem(getLocalPolishKey(), JSON.stringify(state.polish));
+  } catch { /* The complete profile is already stored in its atomic envelope. */ }
+  state.localSaveFailed = false;
+  return true;
 }
 
 function saveCards() {
-  persistCardsLocally();
+  const saved = persistCardsLocally();
+  if (saved) {
+    try { localStorage.setItem(pendingSaveKey(), crypto.randomUUID()); } catch { /* Server saving can still succeed. */ }
+  }
+  if (saved) setSaveState("На устройстве · отправляем…", "pending");
   syncCardsToServer();
 }
+
+function pendingSaveKey(profile = state.profileId) { return `action-cards:pending:v1:${profile}`; }
+function profileSnapshot() { return globalThis.ProfileBackup.create(state.profileId, { ...state, folders: getAllFolders() }); }
+function setSaveState(text, status) { els.saveState.textContent = text; els.saveState.dataset.state = status; }
 
 function getAllFolders() {
   const folderSet = new Set(state.folders.map(normalizeFolderPath).filter(Boolean));
@@ -1019,9 +1057,10 @@ function mergePolishState(serverPolish = {}, localPolish = {}) {
 
 let cardSyncQueue = Promise.resolve();
 
-function syncCardsToServer() {
-  if (!state.profileSyncReady) return;
+function syncCardsToServer({ force = false } = {}) {
+  if (!state.profileSyncReady && !force) return Promise.resolve(false);
   const profile = state.profileId;
+  const pendingToken = localStorage.getItem(pendingSaveKey(profile));
   const body = JSON.stringify({
     profile,
     cards: state.cards,
@@ -1037,8 +1076,14 @@ function syncCardsToServer() {
     try {
       const response = await fetch("/api/cards", { method: "PUT", headers: { "Content-Type": "application/json" }, body });
       if (!response.ok) throw new Error("Sync unavailable");
+      if (localStorage.getItem(pendingSaveKey(profile)) === pendingToken) {
+        localStorage.removeItem(pendingSaveKey(profile));
+        if (state.profileId === profile) setSaveState("Сохранено", "ok");
+      }
+      return true;
     } catch {
-      if (state.profileId === profile) setStatus("Карточки сохранены на этом устройстве. Сервер синхронизации сейчас недоступен.", "warn");
+      if (state.profileId === profile) setSaveState(state.localSaveFailed ? "Не сохранено · нет связи и память заполнена" : "Нет связи · ожидает отправки", "warn");
+      return false;
     }
   });
   return cardSyncQueue;
@@ -3483,6 +3528,134 @@ function closeDeckDialog() {
 
 function openSettingsDialog() {
   openAppDialog(els.settingsDialog);
+  refreshBackups();
+}
+
+let availableBackups = [];
+
+async function refreshBackups() {
+  const profile = state.profileId;
+  const local = globalThis.ProfileBackup.history(localStorage, profile).map((copy) => ({ copy, source: "На устройстве" }));
+  availableBackups = local;
+  renderBackupOptions();
+  els.backupStatus.textContent = "Проверяем серверные копии…";
+  try {
+    const response = await fetch(`/api/backups?profile=${encodeURIComponent(profile)}`, { cache: "no-store" });
+    if (!response.ok) throw new Error("Backups unavailable");
+    const data = await response.json();
+    if (state.profileId !== profile) return;
+    availableBackups = [...local, ...(data.backups || []).map((item) => ({ ...item, source: "На сервере" }))]
+      .sort((a, b) => String(b.createdAt || b.copy?.createdAt).localeCompare(String(a.createdAt || a.copy?.createdAt)));
+    renderBackupOptions();
+    els.backupStatus.textContent = availableBackups.length ? "" : "Первая копия появится после следующего сохранения.";
+  } catch {
+    if (state.profileId === profile) els.backupStatus.textContent = "Серверные копии недоступны. Копии на устройстве доступны.";
+  }
+}
+
+function renderBackupOptions() {
+  els.backupSelect.replaceChildren();
+  availableBackups.forEach((item, index) => {
+    const option = document.createElement("option");
+    option.value = String(index);
+    option.textContent = `${new Date(item.createdAt || item.copy.createdAt).toLocaleString("ru-RU")} · ${item.count ?? item.copy.data.cards.length} карточек · ${item.source}`;
+    els.backupSelect.appendChild(option);
+  });
+  if (!availableBackups.length) {
+    const option = document.createElement("option"); option.value = ""; option.textContent = "Нет копий";
+    els.backupSelect.appendChild(option);
+  }
+  els.restoreBackupButton.disabled = !availableBackups.length;
+}
+
+async function restoreProfileCopy(copy) {
+  const profile = state.profileId;
+  const backup = globalThis.ProfileBackup.parse(JSON.stringify(copy));
+  const data = backup.data;
+  const recoveredActivity = normalizeActivity(data.activity);
+  const recoveredEnglish = normalizeEnglishTrainerState(data.englishTrainer);
+  const recoveredPolish = normalizePolishState(data.polish);
+  if (!confirm(`Восстановить ${data.cards.length} карточек и словари в текущий профиль? Текущие карточки не будут удалены.`)) return;
+  await cardSyncQueue;
+  if (state.profileId !== profile) return;
+  const images = new Map();
+  for (const card of data.cards) {
+    if (!card.imageUrl?.startsWith("data:image/")) continue;
+    if (!images.has(card.imageUrl)) {
+      const response = await fetch("/api/backups/image", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ profile, dataUrl: card.imageUrl }) });
+      if (!response.ok) throw new Error("Не удалось восстановить картинки на сервере. Текущие данные не изменены.");
+      const result = await response.json();
+      if (!result.imageUrl?.startsWith("/images/")) throw new Error("Сервер не сохранил картинку.");
+      images.set(card.imageUrl, result.imageUrl);
+    }
+    card.imageUrl = images.get(card.imageUrl);
+  }
+  if (state.profileId !== profile) return;
+  globalThis.ProfileBackup.checkpoint(localStorage, profile, profileSnapshot(), true);
+  const now = Date.now();
+  const ids = new Map(state.cards.map((card) => [card.id, card.id]));
+  const phrases = new Map(state.cards.map((card) => [songPhraseKey(card.phrase), card.id]));
+  const restored = data.cards.map((card) => {
+    const id = ids.get(card.id) || phrases.get(songPhraseKey(card.phrase)) || card.id;
+    ids.set(card.id, id); phrases.set(songPhraseKey(card.phrase), id);
+    return { ...card, id, updatedAt: now };
+  });
+  state.cards = mergeCards(state.cards, restored);
+  mergeFolders(data.folders);
+  state.starterPacks = normalizeStarterPacks([...state.starterPacks, ...normalizeStarterPacks(data.starterPacks)]);
+  state.activity = mergeActivity(state.activity, recoveredActivity);
+  state.englishTrainer = mergeEnglishTrainerState(state.englishTrainer, recoveredEnglish);
+  state.polish = mergePolishState(state.polish, recoveredPolish);
+  const settings = normalizeStudySettings({ ...data.studySettings, updatedAt: now });
+  if (Array.isArray(settings.selection?.cardIds)) settings.selection.cardIds = settings.selection.cardIds.map((id) => ids.get(id) || id);
+  state.studySettings = settings;
+  saveCards();
+  renderStudy(0); renderEnglishTrainer(); renderPolish(); syncGoalDialog();
+  els.backupStatus.textContent = "Копия восстановлена. Текущие карточки сохранены.";
+}
+
+async function restoreSelectedBackup() {
+  const profile = state.profileId;
+  const item = availableBackups[Number(els.backupSelect.value)];
+  if (!item) return;
+  els.restoreBackupButton.disabled = true;
+  try {
+    let copy = item.copy;
+    if (!copy) {
+      const response = await fetch(`/api/backups?profile=${encodeURIComponent(profile)}&date=${encodeURIComponent(item.date)}`, { cache: "no-store" });
+      if (!response.ok) throw new Error("Не удалось загрузить копию.");
+      copy = await response.json();
+    }
+    if (state.profileId === profile) await restoreProfileCopy(copy);
+  } catch (error) { els.backupStatus.textContent = error.message; }
+  finally { els.restoreBackupButton.disabled = !availableBackups.length; }
+}
+
+async function downloadProfileBackup() {
+  els.downloadBackupButton.disabled = true;
+  const snapshot = profileSnapshot();
+  els.backupStatus.textContent = "Собираем копию с картинками…";
+  try {
+    const copy = await globalThis.ProfileBackup.portable(snapshot, fetch, (blob) => new Promise((resolve, reject) => {
+      const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = () => reject(new Error("Не удалось прочитать картинку.")); reader.readAsDataURL(blob);
+    }));
+    const blob = new Blob([JSON.stringify(copy)], { type: "application/json" });
+    if (blob.size > globalThis.ProfileBackup.LIMIT) throw new Error("Копия с картинками превышает 64 МБ.");
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a"); link.href = url;
+    link.download = `action-cards-${snapshot.profile}-${snapshot.createdAt.slice(0, 10)}.json`;
+    document.body.appendChild(link); link.click(); link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    els.backupStatus.textContent = "Файл копии готов.";
+  } catch (error) { els.backupStatus.textContent = error.message; }
+  finally { els.downloadBackupButton.disabled = false; }
+}
+
+async function retryProfileSync() {
+  try {
+    if (!state.profileSyncReady) await loadServerCards();
+    else if (localStorage.getItem(pendingSaveKey())) await syncCardsToServer();
+  } catch { setSaveState("Нет связи · сохранено на устройстве", "warn"); }
 }
 
 function closeSettingsDialog() {
@@ -3820,6 +3993,21 @@ els.againButton.addEventListener("click", () => rateCard(false));
 els.gotItButton.addEventListener("click", () => rateCard(true));
 swipes.attach();
 els.loadProfileButton.addEventListener("click", () => openProfile(els.profileInput.value));
+els.downloadBackupButton.addEventListener("click", downloadProfileBackup);
+els.importBackupButton.addEventListener("click", () => els.backupFileInput.click());
+els.restoreBackupButton.addEventListener("click", restoreSelectedBackup);
+els.backupFileInput.addEventListener("change", async () => {
+  const file = els.backupFileInput.files?.[0];
+  const profile = state.profileId;
+  try {
+    if (!file) return;
+    if (file.size > globalThis.ProfileBackup.LIMIT) throw new Error("Файл копии превышает 64 МБ.");
+    const copy = globalThis.ProfileBackup.parse(await file.text());
+    if (state.profileId === profile) await restoreProfileCopy(copy);
+  } catch (error) { els.backupStatus.textContent = error.message; }
+  finally { els.backupFileInput.value = ""; }
+});
+window.addEventListener("online", retryProfileSync);
 els.newProfileButton.addEventListener("click", createNewProfile);
 els.createFolderButton.addEventListener("click", createFolder);
 els.activityButton.addEventListener("click", openActivityDialog);
@@ -3999,3 +4187,4 @@ updateSpeechControls();
 updatePhraseMode();
 updateSongLyricsLinks();
 setInterval(updateAiStatus, 10000);
+setInterval(retryProfileSync, 30000);
