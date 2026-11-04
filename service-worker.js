@@ -1,4 +1,4 @@
-const CACHE_NAME = "action-cards:v73-mountain";
+const CACHE_NAME = "action-cards:v74";
 const ASSETS = [
   "./",
   "./index.html",
@@ -43,8 +43,9 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
-  if (event.request.method === "GET" && url.origin === self.location.origin && (url.pathname.startsWith("/images/") || url.pathname.startsWith("/assets/ai/"))) {
-    event.respondWith(fetch(event.request).catch(async () => await caches.match(event.request) || new Response("Image not downloaded", { status: 503 })));
+  const downloadedImage = url.origin !== self.location.origin ? event.request.destination === "image" : url.pathname.startsWith("/images/") || url.pathname.startsWith("/assets/ai/");
+  if (event.request.method === "GET" && downloadedImage) {
+    event.respondWith((async () => await caches.match(event.request) || fetch(event.request).catch(() => new Response("Image not downloaded", { status: 503 })))());
     return;
   }
   if (event.request.method !== "GET" || !isStaticAssetRequest(event.request)) return;

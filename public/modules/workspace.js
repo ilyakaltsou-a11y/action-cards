@@ -21,6 +21,8 @@
     const { document, storage } = options;
     const el = (id) => document.getElementById(id);
     let screen = "home", noteId = "", noteTimer, noteProfile = "", undoId = "", period = 7, downloading = false;
+    const selectedWords = new Set();
+    let noteWordsBusy = false, noteExerciseEpoch = 0;
     const data = () => normalize(options.getData());
     const offlineKey = (profile) => `action-cards:offline:v1:${profile}`;
     const cacheName = (profile) => `action-cards:offline:v1:${profile}`;
@@ -99,6 +101,7 @@
       });
       if (!notes.length) { const empty = document.createElement("p"); empty.className = "empty-message"; empty.textContent = query ? "Ничего не найдено" : "Пока нет заметок"; list.appendChild(empty); }
       el("undoNoteButton").hidden = !undoId;
+      el("practiceNoteButton").disabled = !data().notes.some((note) => note.id === noteId && !note.deletedAt && note.body.trim());
     }
     function openNote(id) {
       flushNote(); const note = data().notes.find((n) => n.id === id && !n.deletedAt); if (!note) return;
@@ -122,29 +125,37 @@
     async function downloadCards(cards, silent = false) {
       if (!root.caches) { if (!silent) el("offlineStatus").textContent = "Офлайн-хранилище недоступно в этом браузере."; return; }
       const profile = options.getProfile(); const cache = await root.caches.open(cacheName(profile));
-      const record = offlineRecord(profile); const ready = new Map(record.cards.map((c) => [c.id, c])); let failed = 0;
-      for (let index = 0; index < cards.length; index++) {
-        const card = cards[index];
-        try {
-          if (card.imageUrl && !card.imageUrl.startsWith("data:")) {
-            const url = new URL(card.imageUrl, window.location.href);
-            if (url.origin !== window.location.origin) throw new Error("External image");
-            if (!await cache.match(url.href)) { const response = await fetch(url.href); if (!response.ok) throw new Error("Image unavailable"); await cache.put(url.href, response); }
+      const record = offlineRecord(profile); const ready = new Map(record.cards.map((c) => [c.id, c])); let failed = 0, completed = 0, cursor = 0, failureReason = "";
+      if (!silent) el("offlineStatus").textContent = `Скачиваем: 0 из ${cards.length}…`;
+      async function downloadNext() {
+        while (cursor < cards.length) {
+          const card = cards[cursor++];
+          try {
+            if (card.imageUrl && !card.imageUrl.startsWith("data:")) {
+              const url = new URL(card.imageUrl, window.location.href);
+              const source = url.origin === window.location.origin ? url.href : `/api/offline-image?url=${encodeURIComponent(url.href)}`;
+              if (!await cache.match(url.href)) { const response = await fetch(source); if (!response.ok) throw new Error(`HTTP ${response.status}`); await cache.put(url.href, response); }
+            }
+            ready.set(card.id, { id: card.id, imageUrl: card.imageUrl || "" });
+          } catch (error) {
+            failed++;
+            failureReason = error.name === "QuotaExceededError" ? "Недостаточно места на устройстве." : error.message === "HTTP 404" ? "Некоторые картинки больше недоступны на сервере." : error.message === "HTTP 400" ? "Этот внешний сайт не поддерживает загрузку картинок." : "Проверь интернет и повтори загрузку.";
           }
-          ready.set(card.id, { id: card.id, imageUrl: card.imageUrl || "" });
-        } catch { failed++; }
-        if (!silent && options.getProfile() === profile) el("offlineStatus").textContent = `Загружено ${index + 1} из ${cards.length}`;
+          completed++;
+          if (!silent && options.getProfile() === profile) el("offlineStatus").textContent = `Скачиваем: ${completed} из ${cards.length}…`;
+        }
       }
+      await Promise.all(Array.from({ length: Math.min(3, cards.length) }, downloadNext));
       storage.setItem(offlineKey(profile), JSON.stringify({ cards: [...ready.values()], updatedAt: Date.now() }));
-      if (options.getProfile() === profile) { render(); if (!silent) el("offlineStatus").textContent = failed ? `Готово: ${cards.length - failed}. Не удалось скачать: ${failed}. Можно повторить.` : `Доступно офлайн: ${ready.size} карточек`; }
+      if (options.getProfile() === profile) { render(); if (!silent) el("offlineStatus").textContent = failed ? `Скачано: ${cards.length - failed} из ${cards.length}. Не удалось скачать: ${failed}. ${failureReason}` : `Скачано: ${cards.length} из ${cards.length}. На устройстве: ${cardCount(ready.size)}.`; }
     }
     function openOffline() {
       const list = el("offlineFolders"); list.replaceChildren();
-      options.getFolders().forEach((folder, index) => {
-        const label = document.createElement("label"); const input = document.createElement("input"); input.type = "checkbox"; input.value = folder; input.checked = index === 0;
+      options.getFolders().forEach((folder) => {
+        const label = document.createElement("label"); const input = document.createElement("input"); input.type = "checkbox"; input.value = folder; input.checked = false;
         const text = document.createElement("span"); text.textContent = `${folder} · ${options.getCards().filter((c) => options.cardFolder(c) === folder).length}`; label.append(input, text); list.appendChild(label);
       });
-      el("offlineStatus").textContent = `Загружено: ${offlineRecord().cards.length} карточек`;
+      el("offlineStatus").textContent = `На устройстве: ${cardCount(offlineRecord().cards.length)}. Выбери папки для загрузки.`;
       options.openDialog(el("offlineDialog"));
     }
     async function autoDownload() {
@@ -177,6 +188,58 @@
       el("favoriteCardButton").setAttribute("aria-label", active ? "Убрать из избранного" : "Добавить в избранное");
       if (screen === "home") renderFolders(); if (screen === "progress") renderProgress(); if (screen === "notes") renderNotes();
     }
+    function renderWordChoices() {
+      const language = el("noteWordsLanguage").value;
+      const query = el("noteWordsSearch").value.trim().toLocaleLowerCase();
+      const words = options.getWords(language).filter((word) => `${word.word} ${word.translation || ""}`.toLocaleLowerCase().includes(query));
+      const list = el("noteWordChoices"); const scrollTop = list.scrollTop; list.replaceChildren();
+      words.slice(0, 100).forEach((word) => {
+        const label = document.createElement("label"); const input = document.createElement("input"); input.type = "checkbox"; input.checked = selectedWords.has(word.word); input.setAttribute("aria-label", word.word);
+        input.disabled = !input.checked && selectedWords.size >= 5;
+        const text = document.createElement("span"); text.textContent = word.word;
+        if (word.translation) { const meaning = document.createElement("small"); meaning.textContent = word.translation; text.appendChild(meaning); }
+        label.append(input, text); list.appendChild(label);
+        input.addEventListener("change", () => { if (input.checked) selectedWords.add(word.word); else selectedWords.delete(word.word); renderWordChoices(); });
+      });
+      if (!words.length) { const empty = document.createElement("p"); empty.className = "empty-message"; empty.textContent = query ? "Ничего не найдено" : "В словаре пока нет слов"; list.appendChild(empty); }
+      list.scrollTop = scrollTop;
+      el("noteWordsCount").textContent = `Выбрано: ${selectedWords.size} из 5${words.length > 100 ? " · Уточни поиск" : ""}`;
+      el("createNoteExerciseButton").disabled = !selectedWords.size || noteWordsBusy;
+    }
+    el("openNoteWordsButton").addEventListener("click", () => {
+      if (noteWordsBusy) return;
+      noteExerciseEpoch++; flushNote(); selectedWords.clear();
+      const languageOption = [...el("noteWordsLanguage").querySelectorAll("option")].find((option) => option.value === options.getLanguage());
+      if (languageOption) languageOption.selected = true;
+      el("noteWordsSearch").value = ""; el("noteWordsStatus").textContent = "";
+      renderWordChoices(); options.openDialog(el("noteWordsDialog"));
+    });
+    const closeWordPicker = () => { noteExerciseEpoch++; options.closeDialog(el("noteWordsDialog")); };
+    el("closeNoteWordsButton").addEventListener("click", closeWordPicker);
+    el("noteWordsDialog").addEventListener("cancel", () => { noteExerciseEpoch++; });
+    el("noteWordsDialog").addEventListener("click", (event) => { if (event.target === el("noteWordsDialog")) closeWordPicker(); });
+    el("noteWordsLanguage").addEventListener("change", () => { selectedWords.clear(); renderWordChoices(); });
+    el("noteWordsSearch").addEventListener("input", renderWordChoices);
+    el("createNoteExerciseButton").addEventListener("click", async () => {
+      if (!selectedWords.size || el("createNoteExerciseButton").disabled) return;
+      const profile = options.getProfile();
+      const epoch = noteExerciseEpoch;
+      noteWordsBusy = true; el("openNoteWordsButton").disabled = true;
+      const selected = options.getWords(el("noteWordsLanguage").value).filter((word) => selectedWords.has(word.word));
+      for (const id of ["createNoteExerciseButton", "noteWordsLanguage", "noteWordsSearch"]) el(id).disabled = true;
+      el("noteWordChoices").inert = true; el("noteWordsStatus").textContent = "AI составляет задание…";
+      try {
+        await options.onWordsExercise(el("noteWordsLanguage").value, selected, () => epoch === noteExerciseEpoch);
+        if (profile !== options.getProfile()) throw new Error("Профиль изменился. Выбери слова заново.");
+        options.closeDialog(el("noteWordsDialog")); route("learn");
+      } catch (error) { el("noteWordsStatus").textContent = error.message || "Не удалось создать задание. Попробуй ещё раз."; }
+      finally { noteWordsBusy = false; el("openNoteWordsButton").disabled = false; el("noteWordChoices").inert = false; for (const id of ["noteWordsLanguage", "noteWordsSearch"]) el(id).disabled = false; renderWordChoices(); }
+    });
+    el("practiceNoteButton").addEventListener("click", () => {
+      const note = data().notes.find((item) => item.id === noteId && !item.deletedAt); if (!note?.body.trim()) return;
+      const input = el("noteBody"); const selection = input.value.slice(input.selectionStart, input.selectionEnd);
+      flushNote(); options.onNoteText(selection || note.body); route("learn");
+    });
     document.querySelectorAll("[data-workspace-route]").forEach((button) => button.addEventListener("click", () => route(button.dataset.workspaceRoute)));
     document.querySelectorAll("[data-progress-days]").forEach((button) => button.addEventListener("click", () => { period = Number(button.dataset.progressDays); document.querySelectorAll("[data-progress-days]").forEach((b) => b.setAttribute("aria-pressed", String(b === button))); renderProgress(); }));
     el("homeGoalButton").addEventListener("click", options.openActivity);

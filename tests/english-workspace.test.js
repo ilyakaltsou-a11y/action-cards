@@ -78,10 +78,10 @@ async function launch({ offline = false, saved, storedFolder = "all", exerciseRe
       const body = JSON.parse(options.body);
       return { ok: true, json: async () => importImage ? importImage(body) : { imageUrl: defaults.cards[0].imageUrl } };
     }
-    if (route === "/api/english/sentence-trainer/create-exercise") {
+    if (["/api/english/sentence-trainer/create-exercise", "/api/polish/create-exercise"].includes(route)) {
       const body = JSON.parse(options.body);
       exerciseCalls += 1;
-      const exercise = exerciseResponse ? exerciseResponse(body, exerciseCalls) : { promptRu: "Подними телефон.", expectedEn: "Pick up the phone.", usedWords: body.focusWords };
+      const exercise = exerciseResponse ? exerciseResponse(body, exerciseCalls) : { promptRu: "Подними телефон.", expectedEn: "Pick up the phone.", expectedPl: "Podnieś telefon.", usedWords: body.focusWords };
       return { ok: true, json: async () => ({ exercise }) };
     }
     if (route === "/api/english/sentence-trainer/check-answer") {
@@ -217,6 +217,65 @@ test("mountain workspace routes, saves themes and edits Notes offline without ch
   assert.equal(reloaded.state.workspace.theme, "alpine");
 });
 
+test("Notes word selection uses only selected vocabulary, preserves phrases and opens normal practice", async () => {
+  const app = await launch();
+  const cards = app.state.cards.length;
+  app.api.mergeEnglishTrainerWords([{ word: "pick up", translation: "поднять" }, { word: "phone", translation: "телефон" }, { word: "table", translation: "стол" }]);
+  app.api.mountainWorkspace.route("notes");
+  app.document.getElementById("openNoteWordsButton").click();
+  for (const word of ["pick up", "phone"]) {
+    const input = [...app.document.querySelectorAll("#noteWordChoices input")].find((item) => item.getAttribute("aria-label") === word);
+    assert.ok(input); input.checked = true; input.dispatchEvent(new app.window.Event("change"));
+  }
+  const search = app.document.getElementById("noteWordsSearch"); search.value = "нет такого слова"; search.dispatchEvent(new app.window.Event("input"));
+  assert.match(app.document.getElementById("noteWordChoices").textContent, /Ничего не найдено/);
+  assert.match(app.document.getElementById("noteWordsCount").textContent, /2 из 5/);
+  app.document.getElementById("createNoteExerciseButton").click(); await app.flush();
+  const request = app.requests.findLast((item) => item.route.endsWith("create-exercise"));
+  assert.deepEqual(request.body.words.map((word) => word.word), ["phone", "pick up"]);
+  assert.equal(request.body.requireAllFocus, true);
+  assert.equal(app.state.englishPractice, "sentences");
+  assert.equal(app.document.body.dataset.screen, "learn");
+  assert.equal(app.document.getElementById("noteWordsDialog").open, false);
+  assert.equal(app.state.cards.length, cards);
+  assert.equal(app.state.englishTrainerHintVisible, false);
+  app.api.mountainWorkspace.route("notes");
+  app.document.getElementById("newNoteButton").click();
+  const body = app.document.getElementById("noteBody"); body.value = "Я хочу чашку кофе."; body.dispatchEvent(new app.window.Event("input"));
+  app.document.getElementById("practiceNoteButton").click();
+  assert.equal(app.document.getElementById("englishTrainerTextDialog").open, true);
+  assert.equal(app.document.getElementById("englishTrainerManualPromptInput").value, "Я хочу чашку кофе.");
+});
+
+test("Notes word exercise errors keep the selection and cancellation cannot replace the current exercise", async () => {
+  const app = await launch();
+  app.api.mountainWorkspace.route("notes"); app.document.getElementById("openNoteWordsButton").click();
+  const input = app.document.querySelector("#noteWordChoices input"); input.checked = true; input.dispatchEvent(new app.window.Event("change"));
+  app.setOffline(true); app.document.getElementById("createNoteExerciseButton").click(); await app.flush();
+  assert.equal(app.document.getElementById("noteWordsDialog").open, true);
+  assert.match(app.document.getElementById("noteWordsCount").textContent, /1 из 5/);
+  assert.ok(app.document.getElementById("noteWordsStatus").textContent);
+  assert.equal(app.document.getElementById("createNoteExerciseButton").disabled, false);
+  app.setOffline(false); app.document.getElementById("createNoteExerciseButton").click(); app.document.getElementById("closeNoteWordsButton").click(); await app.flush();
+  assert.equal(app.document.body.dataset.screen, "notes");
+  assert.equal(app.state.englishTrainer.currentExercise, null);
+});
+
+test("Notes switches word dictionaries and creates Polish practice without unrelated prefetch", async () => {
+  const app = await launch();
+  app.state.polish.words = [{ word: "dom", translation: "дом" }, { word: "być", translation: "быть" }, { word: "mieć", translation: "иметь" }];
+  app.api.mountainWorkspace.route("notes"); app.document.getElementById("openNoteWordsButton").click();
+  app.document.querySelector('#noteWordsLanguage option[value="polish"]').selected = true;
+  app.document.getElementById("noteWordsLanguage").dispatchEvent(new app.window.Event("change"));
+  assert.equal(app.document.querySelectorAll("#noteWordChoices input").length, 3);
+  const input = app.document.querySelector('#noteWordChoices input[aria-label="dom"]'); input.checked = true; input.dispatchEvent(new app.window.Event("change"));
+  app.document.getElementById("createNoteExerciseButton").click(); await app.flush();
+  assert.equal(app.state.language, "polish");
+  assert.equal(app.state.polish.currentExercise.expectedPl, "Podnieś telefon.");
+  assert.equal(app.requests.filter((item) => item.route === "/api/polish/create-exercise").length, 1);
+  assert.equal(app.state.polishHintVisible, false);
+});
+
 test("favorites select only bookmarked cards and progress is computed from actual reviews", async () => {
   const app = await launch();
   app.api.mountainWorkspace.route("learn");
@@ -252,13 +311,18 @@ test("offline packs prefetch starter images, retain partial successes and keep p
   const key = `action-cards:offline:v1:${profile}`;
   assert.equal(JSON.parse(app.storage.get(key)).cards.length, 20);
   app.document.getElementById("homeOfflineButton").click();
+  assert.ok([...app.document.querySelectorAll("#offlineFolders input")].every((input) => !input.checked));
   app.document.getElementById("studyOfflineButton").click();
   assert.equal(app.state.studySettings.selection.cardIds.length, 20);
   assert.equal(app.document.body.dataset.screen, "learn");
   assert.equal(app.document.getElementById("offlineDialog").open, false);
+  const legacy = defaults.cards.find((card) => card.imageUrl.startsWith("https://action-cards.ilya-kaltsou.workers.dev/images/"));
+  await app.api.mountainWorkspace.downloadCards([legacy]);
+  assert.ok(app.requests.some((request) => request.route === `/api/offline-image?url=${encodeURIComponent(legacy.imageUrl)}`));
+  assert.ok(stores.get(key).has(legacy.imageUrl));
   app.setOffline(true);
   await app.api.mountainWorkspace.downloadCards([{ id: "missing", imageUrl: "/images/not-downloaded.png" }]);
-  assert.equal(JSON.parse(app.storage.get(key)).cards.length, 20);
+  assert.equal(JSON.parse(app.storage.get(key)).cards.length, 21);
   assert.match(app.document.getElementById("offlineStatus").textContent, /Не удалось скачать: 1/);
   app.document.getElementById("clearOfflineButton").click(); await app.flush();
   assert.equal(stores.has(`action-cards:offline:v1:${profile}`), false);

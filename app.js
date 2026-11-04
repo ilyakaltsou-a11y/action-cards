@@ -7,7 +7,7 @@ const LANGUAGE_KEY = "action-cards:language:v1";
 const POLISH_KEY = "action-cards:polish:v1";
 const ENGLISH_TRAINER_KEY = "action-cards:english-trainer:v1";
 const STUDY_SETTINGS_KEY = "action-cards:study-settings:v1";
-const DEFAULT_CARDS_URL = "default-cards.json?v=73";
+const DEFAULT_CARDS_URL = "default-cards.json?v=74";
 const STARTER_PACKS_KEY = "action-cards:starter-packs:v1";
 const BASIC_ACTIONS_PACK = "basic-actions-v1";
 const BASIC_ACTIONS_FOLDER = "Стартовые / Действия с предметами";
@@ -2702,7 +2702,7 @@ async function checkEnglishTrainerAnswer() {
   }
 }
 
-function setLanguage(language) {
+function setLanguage(language, { prefetch = true } = {}) {
   state.language = language === "polish" ? "polish" : "english";
   localStorage.setItem(LANGUAGE_KEY, state.language);
   els.englishView.hidden = state.language !== "english";
@@ -2716,7 +2716,7 @@ function setLanguage(language) {
   renderEnglishTrainer();
   setEnglishPractice(state.englishPractice);
   renderPolish();
-  if (state.language === "polish") window.setTimeout(() => ensurePolishExerciseQueue({ silent: true }), 300);
+  if (prefetch && state.language === "polish") window.setTimeout(() => ensurePolishExerciseQueue({ silent: true }), 300);
 }
 
 function initLanguage() {
@@ -4190,10 +4190,38 @@ if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js"));
 }
 
+async function createNotesWordExercise(language, words, isCurrent = () => true) {
+  const profile = state.profileId;
+  if (!words.length || words.length > 5) throw new Error("Выбери от одного до пяти слов.");
+  await updateAiStatus();
+  if (!state.deepSeekOnline) throw new Error("Для создания задания нужен интернет и подключённый DeepSeek.");
+  const english = language === "english";
+  const focusWords = words.map((word) => word.word);
+  const { count, mode } = english ? englishTrainerExerciseSettings() : polishExerciseSettings();
+  const data = await requestPolishApi(english ? "/api/english/sentence-trainer/create-exercise" : "/api/polish/create-exercise", {
+    words, focusWords, requireAllFocus: true, count, mode, exerciseStyle: "statement",
+    recentExercises: english ? recentEnglishTrainerExercisesForAi() : recentPolishExercisesForAi(),
+  });
+  if (profile !== state.profileId) throw new Error("Профиль изменился. Повтори создание задания.");
+  if (!isCurrent()) throw new Error("Создание отменено.");
+  const exercise = data.exercise;
+  if (!exercise?.promptRu || !(english ? exercise.expectedEn : exercise.expectedPl) || !focusWords.every((word) => exercise.usedWords?.includes(word))) throw new Error("AI использовал не все выбранные слова. Попробуй ещё раз.");
+  setLanguage(language, { prefetch: false });
+  if (english) { setEnglishPractice("sentences"); activateEnglishTrainerExercise({ ...exercise, mode, targetCount: count }); setEnglishTrainerStatus("Задание по выбранным словам готово.", "ok"); }
+  else { activatePolishExercise({ ...exercise, mode, targetCount: count }); setPolishStatus("Задание по выбранным словам готово.", "ok"); }
+}
+
 mountainWorkspace = globalThis.MountainWorkspace.create({
   document, storage: localStorage, getProfile: () => state.profileId, getData: () => state.workspace,
   getCards: () => state.cards, getFolders: getAllFolders, cardFolder, currentCard,
   getActivity: () => state.activity, summary: () => activityTracker.summary(),
+  getLanguage: () => state.language,
+  getWords: (language) => language === "english" ? englishTrainerWords() : normalizePolishState(state.polish).words,
+  onWordsExercise: createNotesWordExercise,
+  onNoteText: (text) => {
+    if (state.language === "polish") { els.polishManualPromptInput.value = text; openPolishTextDialog(); }
+    else { setLanguage("english"); setEnglishPractice("sentences"); els.englishTrainerManualPromptInput.value = text; openEnglishTrainerTextDialog(); }
+  },
   onChange: (value, remote = true) => { state.workspace = value; if (remote) { saveCards(); return !state.localSaveFailed; } return persistCardsLocally(); },
   onFolder: (folder) => { setLanguage("english"); setEnglishPractice("cards"); state.activeFolder = folder; useStudyFolder(folder); renderStudy(0); saveCards(); },
   onSelection: (ids) => { setLanguage("english"); setEnglishPractice("cards"); practiceSelectionTarget = "cards"; applyPracticeSelection({ folderPaths: ["all"], cardIds: ids }); },

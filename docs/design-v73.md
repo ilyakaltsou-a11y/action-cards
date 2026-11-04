@@ -56,3 +56,14 @@ A GitHub push saves source but does not publish this preview.
 Do not attach the design branch to production KV for automatic preview deployments.
 Use the existing Wrangler assets deployment after design approval, retaining the existing `CARDS_KV` binding and secrets.
 The generated single-file Worker embeds all images and is much larger; the assets deployment avoids embedding wallpapers in JavaScript.
+
+## v74 Follow-Up
+
+- Notes stays a free-form notebook. The coffee conversation is a test-profile example, not a required lesson or a global starter note.
+- "Task from words" selects one to five dictionary entries (English or Polish), preserves phrases whole, and opens the existing translation trainer with hidden hints. Only selected vocabulary is sent; the request requires all selected entries. Existing trainer count and difficulty settings apply.
+- "Practice text" opens the existing own-text dialog with the editor selection, or the whole open note. The user can edit the Russian prompt before requesting AI hints. Notes are not deleted or replaced.
+- Language, practice-mode and time-period switches now share a pill-shaped segmented style.
+- Offline folders are no longer silently preselected. Three bounded download workers show progress and retain successful images after a partial failure.
+- Legacy pictures on the existing production host download via `/api/offline-image`. This is an allowlisted bridge, not an open proxy: HTTPS, exact host, `/images/` filenames, no redirects or forwarded credentials, image MIME validation, 8 MB streamed limit and a 30-second timeout.
+- Explicitly downloaded image responses are cached under their original image URL and served cache-first, including cross-origin image requests. API requests are still never stored in the shell cache.
+- Git tag `v73` preserves the version before this follow-up. GitHub source push is still separate from production deployment.

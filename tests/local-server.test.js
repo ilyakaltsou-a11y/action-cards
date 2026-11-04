@@ -212,7 +212,7 @@ test("English and Polish training both use the shared handlers over local HTTP",
     ["/api/english/sentence-trainer/create-exercise", ["have", "home", "read"]],
     ["/api/polish/create-exercise", ["mieć", "dom", "czytać"]],
   ]) {
-    const response = await app.fetch(route, jsonBody({ words: words.map((word) => ({ word })), count: 10, mode: "hard", focusWords: [words[0]] }));
+    const response = await app.fetch(route, jsonBody({ words: words.map((word) => ({ word })), count: 10, mode: "hard", focusWords: [words[0]], requireAllFocus: true }));
     assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
     assert.ok((await response.json()).exercise.promptRu);
   }
@@ -220,7 +220,34 @@ test("English and Polish training both use the shared handlers over local HTTP",
   for (const call of calls) {
     assert.equal(call.model, "test-model");
     assert.equal(JSON.parse(call.messages.at(-1).content).mode, "hard");
+    assert.match(call.messages[0].content, /EVERY focusWords/);
   }
+});
+
+test("offline image bridge only downloads bounded image responses from the exact legacy host", async (t) => {
+  const app = await fixture(t);
+  const original = globalThis.fetch; t.after(() => { globalThis.fetch = original; });
+  let calls = 0;
+  let result = () => new Response(new Uint8Array([255, 216, 255, 217]), { headers: { "Content-Type": "image/jpeg" } });
+  globalThis.fetch = async (url, options) => {
+    calls++;
+    assert.equal(url, "https://action-cards.ilya-kaltsou.workers.dev/images/test.jpg");
+    assert.equal(options.redirect, "error"); assert.equal(options.headers, undefined);
+    return result();
+  };
+  for (const url of ["http://127.0.0.1/private", "https://example.org/images/test.jpg", "https://action-cards.ilya-kaltsou.workers.dev/api/cards?profile=private", "https://name:password@action-cards.ilya-kaltsou.workers.dev/images/test.jpg", "https://action-cards.ilya-kaltsou.workers.dev/images/test.jpg?other=1"]) {
+    assert.equal((await app.fetch(`/api/offline-image?url=${encodeURIComponent(url)}`)).status, 400);
+  }
+  assert.equal(calls, 0);
+  const route = `/api/offline-image?url=${encodeURIComponent("https://action-cards.ilya-kaltsou.workers.dev/images/test.jpg")}`;
+  const response = await app.fetch(route, { headers: { Authorization: "private-test-value" } });
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("Content-Type"), "image/jpeg");
+  assert.deepEqual([...new Uint8Array(await response.arrayBuffer())], [255, 216, 255, 217]);
+  result = () => new Response("not found", { status: 404 }); assert.equal((await app.fetch(route)).status, 404);
+  result = () => new Response("html", { headers: { "Content-Type": "text/html" } }); assert.equal((await app.fetch(route)).status, 502);
+  result = () => new Response("large", { headers: { "Content-Type": "image/png", "Content-Length": String(9 * 1024 * 1024) } }); assert.equal((await app.fetch(route)).status, 502);
+  result = () => new Response(new Uint8Array(9 * 1024 * 1024), { headers: { "Content-Type": "image/png" } }); assert.equal((await app.fetch(route)).status, 502);
 });
 
 test("file storage serializes writes, preserves binary data and rejects unsafe keys", async (t) => {

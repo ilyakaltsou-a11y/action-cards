@@ -10,6 +10,7 @@ function serviceWorker() {
   const listeners = new Map();
   const matched = [];
   let cached = [];
+  let networkFetches = 0;
   const sandbox = {
     URL,
     self: { addEventListener: (type, listener) => listeners.set(type, listener), location: new URL("https://cards.example/"), skipWaiting: () => {} },
@@ -17,10 +18,10 @@ function serviceWorker() {
       open: async () => ({ addAll: async (assets) => { cached = [...assets]; } }),
       match: async (request, options) => { matched.push({ url: request.url, options }); return new Response("cached module"); },
     },
-    fetch: async () => { throw new Error("Offline"); },
+    fetch: async () => { networkFetches++; throw new Error("Offline"); },
   };
   vm.runInNewContext(fs.readFileSync(path.join(root, "public/service-worker.js"), "utf8"), sandbox);
-  return { listeners, matched, cached: () => cached };
+  return { listeners, matched, cached: () => cached, networkFetches: () => networkFetches };
 }
 
 test("offline installation includes every browser script in its declared load order", async () => {
@@ -42,12 +43,16 @@ test("versioned modules fall back to the offline cache without intercepting API 
   let response;
   sw.listeners.get("fetch")({ request: new Request("https://cards.example/modules/activity.js?v=66"), respondWith: (promise) => { response = promise; } });
   assert.equal(await (await response).text(), "cached module");
+  sw.listeners.get("fetch")({ request: { url: "https://action-cards.ilya-kaltsou.workers.dev/images/test.jpg", method: "GET", destination: "image" }, respondWith: (promise) => { response = promise; } });
+  assert.equal(await (await response).text(), "cached module");
+  assert.equal(sw.networkFetches(), 1, "Downloaded external images must not need a network request");
   assert.equal(sw.matched[0].options.ignoreSearch, true);
   for (const route of ["/api/status", "/api/backups"]) {
     sw.listeners.get("fetch")({ request: new Request(`https://cards.example${route}`), respondWith: () => assert.fail("Dynamic requests must not be cached") });
   }
   sw.listeners.get("fetch")({ request: new Request("https://cards.example/images/private.png"), respondWith: (promise) => { response = promise; } });
   assert.equal(await (await response).text(), "cached module");
+  assert.equal(sw.networkFetches(), 1, "Downloaded private images must also work cache-first");
 });
 
 test("compatibility browser copies match public sources including the new modules", () => {

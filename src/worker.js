@@ -97,6 +97,9 @@ export default {
       if (request.method === "GET" && url.pathname === "/api/backups") {
         return await handleProfileBackups(url, env);
       }
+      if (request.method === "GET" && url.pathname === "/api/offline-image") {
+        return await handleOfflineImage(url);
+      }
       if (request.method === "POST" && url.pathname === "/api/backups/image") {
         return await handleRestoreImage(request, env);
       }
@@ -440,7 +443,7 @@ async function extractPolishWords(env, text = "", existingWords = []) {
   return normalizePolishWords(result.words || result.vocabulary || result.items || result.entries).slice(0, 30);
 }
 
-async function createPolishExercise(env, words = [], count = 10, mode = "medium", recentExercises = [], focusWords = []) {
+async function createPolishExercise(env, words = [], count = 10, mode = "medium", recentExercises = [], focusWords = [], requireAllFocus = false) {
   const vocabulary = normalizePolishWords(words).slice(0, 120);
   const activeVocabulary = new Set(vocabulary.map((word) => cleanPolishWord(word.word)));
   const cleanFocusWords = focusWords.map(cleanPolishWord).filter((word) => word && activeVocabulary.has(word)).slice(0, 12);
@@ -496,7 +499,7 @@ async function createPolishExercise(env, words = [], count = 10, mode = "medium"
         "Do not overload with rare new vocabulary.",
         "Avoid repeating the recent prompts, themes, and sentence patterns. Create a visibly different situation each time.",
         "Use at least 3 words from the provided vocabulary when possible, but never list words that are not actually used.",
-        "If focusWords is not empty, naturally include 1-3 focus words when possible. Do not force all focus words into one exercise.",
+        requireAllFocus ? "Use EVERY focusWords item naturally in the answer; preserve multi-word expressions whole and list their exact base forms in usedWords." : "If focusWords is not empty, naturally include 1-3 focus words when possible. Do not force all focus words into one exercise.",
         "The usedWords array must contain only base forms or whole phrases from the provided active vocabulary that appear in the Polish answer.",
         "Before returning, audit the Polish answer. If it contains more than one content word whose base form is not in active vocabulary, rewrite the exercise.",
         "Return exercise with promptRu, expectedPl, usedWords, grammarFocus, and hint in Russian.",
@@ -535,6 +538,7 @@ async function createPolishExercise(env, words = [], count = 10, mode = "medium"
         "Good with active words iść, sklep, czytać, książka: Kiedy idę do sklepu, czytam książkę.",
         "Good hard example with active words być, dziecko, lubić, czytać, książka, rano, mieć, praca, dom, mówić, rodzina: Kiedy byłem dzieckiem, lubiłem czytać książki rano. Mam pracę i dom, ale lubię mówić z rodziną.",
         "The usedWords array must contain only active vocabulary base forms or whole phrases that appear in the Polish answer.",
+        requireAllFocus ? "Keep EVERY focusWords item in the repaired answer and include its exact base form in usedWords." : "",
       ].join(" "),
     },
     {
@@ -663,7 +667,7 @@ async function createEnglishTrainerExercise(env, words = [], count = 10, mode = 
         `Target about ${selectedCount} total words in the Russian prompt and English answer.`,
         "Use the learner's active vocabulary as the main source of content words. Inflected forms are allowed.",
         "Common function words, pronouns, articles, auxiliaries, particles, and prepositions are allowed.",
-        "The FIRST focus word is mandatory: use it naturally in the English answer and list its exact base form in usedWords. Additional focus words are optional.",
+        context.requireAllFocus ? "Use EVERY focusWords item naturally in the English answer; preserve multi-word expressions whole and list their exact base forms in usedWords." : "The FIRST focus word is mandatory: use it naturally in the English answer and list its exact base form in usedWords. Additional focus words are optional.",
         "Build a NEW sentence around that word or whole phrase from the learner's cards. Vocabulary notes are context, not sentences to copy.",
         "Preserve the focus word's meaning demonstrated in its card notes, especially phrasal verbs. For example, turn around means rotate an object, not walk around it.",
         "Content words must come from the vocabulary entries or their card examples in notes. Allow at most one unfamiliar content word and explain it in the Russian hint; do not introduce unrelated vocabulary.",
@@ -1296,7 +1300,7 @@ async function handleEnglishTrainerCreateExercise(request, env) {
     Array.isArray(body.recentExercises) ? body.recentExercises : [],
     Array.isArray(body.focusWords) ? body.focusWords : [],
     body.exerciseStyle,
-    { folderPath: body.folderPath, folderPaths: body.folderPaths, sourceCards: body.sourceCards }
+    { folderPath: body.folderPath, folderPaths: body.folderPaths, sourceCards: body.sourceCards, requireAllFocus: body.requireAllFocus === true }
   );
   return json({ exercise });
 }
@@ -1355,7 +1359,8 @@ async function handlePolishCreateExercise(request, env) {
     body.count,
     body.mode,
     Array.isArray(body.recentExercises) ? body.recentExercises : [],
-    Array.isArray(body.focusWords) ? body.focusWords : []
+    Array.isArray(body.focusWords) ? body.focusWords : [],
+    body.requireAllFocus === true
   );
   return json({ exercise });
 }
@@ -1520,4 +1525,31 @@ async function handleImage(url, env) {
       "Cache-Control": "public, max-age=31536000, immutable",
     },
   });
+}
+
+async function handleOfflineImage(url) {
+  let source;
+  try { source = new URL(url.searchParams.get("url")); } catch { return json({ error: "Invalid image URL" }, 400); }
+  // Only the existing legacy image host is allowed, never arbitrary proxy destinations.
+  if (source.origin !== "https://action-cards.ilya-kaltsou.workers.dev" || source.username || source.password || source.search || source.hash || !/^\/images\/[a-zA-Z0-9_-]+\.(png|jpe?g|webp)$/.test(source.pathname)) {
+    return json({ error: "Unsupported image source" }, 400);
+  }
+  const response = await fetch(source.href, { redirect: "error", signal: AbortSignal.timeout(30000) });
+  if (!response.ok) return json({ error: "Image unavailable" }, response.status === 404 ? 404 : 502);
+  const type = response.headers.get("Content-Type") || "";
+  const limit = 8 * 1024 * 1024;
+  if (!/^image\/(png|jpeg|webp)(?:;|$)/i.test(type) || Number(response.headers.get("Content-Length")) > limit || !response.body) return json({ error: "Invalid image response" }, 502);
+  const reader = response.body.getReader(); const chunks = []; let size = 0;
+  try {
+    while (true) {
+      const { value, done } = await reader.read(); if (done) break;
+      size += value.byteLength;
+      if (size > limit) { await reader.cancel(); return json({ error: "Image too large" }, 502); }
+      chunks.push(value);
+    }
+  } finally { reader.releaseLock(); }
+  if (!size) return json({ error: "Empty image" }, 502);
+  const bytes = new Uint8Array(size); let offset = 0;
+  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+  return new Response(bytes, { headers: { "Content-Type": type, "Cache-Control": "private, max-age=3600", "X-Content-Type-Options": "nosniff" } });
 }

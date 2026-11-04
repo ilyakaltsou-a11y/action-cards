@@ -7,12 +7,12 @@
     <title>English by Pictures</title>
     <script>
       if (window.location.protocol === "file:") {
-        window.location.replace(`http://127.0.0.1:5176/${window.location.search || "?v=73"}`);
+        window.location.replace(`http://127.0.0.1:5176/${window.location.search || "?v=74"}`);
       }
     </script>
     <link rel="manifest" href="manifest.webmanifest" />
-    <link rel="stylesheet" href="styles.css?v=73" />
-    <link rel="stylesheet" href="mountain.css?v=73" />
+    <link rel="stylesheet" href="styles.css?v=74" />
+    <link rel="stylesheet" href="mountain.css?v=74" />
   </head>
   <body data-screen="home">
     <div class="landscape-backdrop" aria-hidden="true"></div>
@@ -53,6 +53,7 @@
       </section>
       <section class="workspace-screen" id="notesScreen" aria-labelledby="notesTitle" hidden>
         <div class="section-heading"><div><p class="section-kicker">Мысли и полезные фразы</p><h2 id="notesTitle">Notes</h2></div><button class="icon-button" id="newNoteButton" title="Новая заметка" aria-label="Новая заметка" type="button"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#plus"></use></svg></button></div>
+        <div class="notes-tools"><button type="button" class="soft-button" id="openNoteWordsButton"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#layers"></use></svg>Задание из слов</button><button type="button" class="soft-button" id="practiceNoteButton">Тренировать текст</button></div>
         <label class="search-field"><span class="sr-only">Поиск заметок</span><input id="notesSearch" type="search" placeholder="Найти заметку" /></label>
         <div class="notes-layout"><div id="notesList" class="notes-list"></div><form id="noteEditor" class="note-editor" hidden><input id="noteTitle" aria-label="Название заметки" placeholder="Название" maxlength="120" /><textarea id="noteBody" aria-label="Текст заметки" placeholder="Фразы, примеры, вопросы…" rows="8" maxlength="20000"></textarea><div class="note-editor-actions"><span id="noteSaveState" role="status"></span><button class="soft-button" id="deleteNoteButton" type="button"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#trash-2"></use></svg>Удалить</button></div></form></div><button id="undoNoteButton" class="soft-button" type="button" hidden>Отменить удаление</button>
       </section>
@@ -685,20 +686,21 @@
         </div>
       </section>
     </dialog>
-    <script src="modules/practice-selection.js?v=73"></script>
-    <script src="modules/card-import.js?v=73"></script>
-    <script src="modules/activity.js?v=73"></script>
-    <script src="modules/swipe.js?v=73"></script>
+    <script src="modules/practice-selection.js?v=74"></script>
+    <script src="modules/card-import.js?v=74"></script>
+    <script src="modules/activity.js?v=74"></script>
+    <script src="modules/swipe.js?v=74"></script>
     <dialog class="deck-dialog" id="offlineDialog"><section class="deck-dialog-panel" aria-label="Офлайн-доступ"><div class="dialog-head"><div><p class="section-kicker">Всегда с собой</p><h2>Офлайн-доступ</h2></div><button type="button" class="icon-button" id="closeOfflineButton" aria-label="Закрыть офлайн-доступ">×</button></div><div id="offlineFolders" class="offline-folders"></div><div class="profile-actions"><button type="button" class="primary-button" id="downloadOfflineButton"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#arrow-down-to-line"></use></svg>Скачать</button><button type="button" class="soft-button" id="clearOfflineButton">Удалить загрузки</button></div><button type="button" class="soft-button" id="studyOfflineButton">Учить загруженные карточки</button><p id="offlineStatus" role="status" aria-live="polite"></p></section></dialog>
     <dialog class="deck-dialog" id="themesDialog"><section class="deck-dialog-panel" aria-label="Тема оформления"><div class="dialog-head"><h2>Тема оформления</h2><button type="button" class="icon-button" id="closeThemesButton" aria-label="Закрыть темы">×</button></div><div class="theme-grid" id="themeGrid" role="group" aria-label="Выбор пейзажа"></div></section></dialog>
+    <dialog class="deck-dialog" id="noteWordsDialog"><section class="deck-dialog-panel note-words-panel" aria-label="Задание из слов"><div class="dialog-head"><h2>Задание из слов</h2><button type="button" class="icon-button" id="closeNoteWordsButton" aria-label="Закрыть выбор слов">×</button></div><label class="word-field"><span>Язык</span><select id="noteWordsLanguage"><option value="english">English</option><option value="polish">Polski</option></select></label><label class="word-field"><span>Поиск слов</span><input id="noteWordsSearch" type="search" /></label><div class="note-word-choices" id="noteWordChoices"></div><p id="noteWordsCount" role="status"></p><p id="noteWordsStatus" role="status" aria-live="polite"></p><button type="button" class="main-button" id="createNoteExerciseButton">Создать задание</button></section></dialog>
     <nav class="main-dock" aria-label="Основная навигация">
       <button type="button" data-workspace-route="home" aria-label="Главная" title="Главная"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#house"></use></svg><span>Главная</span></button>
       <button type="button" data-workspace-route="learn" aria-label="Учиться" title="Учиться"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#layers"></use></svg><span>Учиться</span></button>
       <button type="button" data-workspace-route="progress" aria-label="Прогресс" title="Прогресс"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#chart-no-axes-column"></use></svg><span>Прогресс</span></button>
       <button type="button" data-workspace-route="notes" aria-label="Notes" title="Notes"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#notebook-pen"></use></svg><span>Notes</span></button>
     </nav>
-    <script src="modules/profile-backup.js?v=73"></script>
-    <script src="modules/workspace.js?v=73"></script>
-    <script src="app.js?v=73"></script>
+    <script src="modules/profile-backup.js?v=74"></script>
+    <script src="modules/workspace.js?v=74"></script>
+    <script src="app.js?v=74"></script>
   </body>
 </html>
