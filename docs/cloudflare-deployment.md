@@ -12,6 +12,7 @@ Cloudflare Workers Builds публикует изменения из `main` по
 3. Production branch: `main`. Root directory: `/`.
 4. Build command: `npm run build`. Deploy command: `npm run deploy`.
 5. Используйте Node.js 22 или новее (для сборки можно задать `NODE_VERSION=22`).
+   Проект использует `pnpm@11.19.0` и существующий `pnpm-lock.yaml`; Cloudflare определяет менеджер по `packageManager`. В GitHub Actions зависимости ставятся через `pnpm install --frozen-lockfile`.
 6. Не включайте публикацию других веток с production-хранилищем. Для preview нужна отдельная KV namespace.
 7. Проверьте текущую привязку `CARDS_KV`: `9fe16fa356cd49b6ad39e0e4851f4f36`.
 8. Секреты `OPENAI_API_KEY` и `DEEPSEEK_API_KEY` остаются в настройках Worker. Не добавляйте их в репозиторий или журналы сборки.

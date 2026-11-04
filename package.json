@@ -2,6 +2,7 @@
   "name": "action-cards",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@11.19.0",
   "description": "AI flashcards for English practice with images, folders, song cards, and spaced review.",
   "type": "commonjs",
   "engines": {
@@ -12,8 +13,8 @@
     "check": "node scripts/check.js",
     "sync:browser": "node scripts/sync-browser.js",
     "build:worker": "node scripts/build-standalone.js",
-    "build": "npm run check && npm test",
-    "deploy": "npx --yes wrangler@4.157.0 deploy",
+    "build": "node scripts/check.js && node --test tests/*.test.js",
+    "deploy": "pnpm dlx wrangler@4.157.0 deploy",
     "test": "node --test tests/*.test.js"
   },
   "devDependencies": {
