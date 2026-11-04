@@ -212,7 +212,7 @@ test("English and Polish training both use the shared handlers over local HTTP",
     ["/api/english/sentence-trainer/create-exercise", ["have", "home", "read"]],
     ["/api/polish/create-exercise", ["mieć", "dom", "czytać"]],
   ]) {
-    const response = await app.fetch(route, jsonBody({ words: words.map((word) => ({ word })), count: 10, mode: "hard", focusWords: [words[0]], requireAllFocus: true }));
+    const response = await app.fetch(route, jsonBody({ words: words.map((word) => ({ word })), count: 10, mode: "hard", focusWords: [words[0]] }));
     assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
     assert.ok((await response.json()).exercise.promptRu);
   }
@@ -220,7 +220,6 @@ test("English and Polish training both use the shared handlers over local HTTP",
   for (const call of calls) {
     assert.equal(call.model, "test-model");
     assert.equal(JSON.parse(call.messages.at(-1).content).mode, "hard");
-    assert.match(call.messages[0].content, /EVERY focusWords/);
   }
 });
 

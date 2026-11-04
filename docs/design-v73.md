@@ -67,3 +67,12 @@ The generated single-file Worker embeds all images and is much larger; the asset
 - Legacy pictures on the existing production host download via `/api/offline-image`. This is an allowlisted bridge, not an open proxy: HTTPS, exact host, `/images/` filenames, no redirects or forwarded credentials, image MIME validation, 8 MB streamed limit and a 30-second timeout.
 - Explicitly downloaded image responses are cached under their original image URL and served cache-first, including cross-origin image requests. API requests are still never stored in the shell cache.
 - Git tag `v73` preserves the version before this follow-up. GitHub source push is still separate from production deployment.
+
+## v75 Selected-Word Repair
+
+- Notes word generation uses a dedicated shared English/Polish DeepSeek flow. Ordinary trainer prompts remain unchanged.
+- Every selected expression is required, but a five-expression exercise may use two or three short sentences. The word count is a soft target here, not a reason to omit vocabulary.
+- The model returns verbatim answer evidence for each base form. This supports inflected Polish words and English phrasal verbs with an intervening object instead of relying on a potentially incomplete `usedWords` list.
+- Missing evidence, incomplete texts and exact recent repeats trigger automatic repair with concrete feedback. At most three DeepSeek calls are made, each with a 30-second timeout; validation rejection returns HTTP 422 and is not automatically resubmitted by the browser.
+- Exhausted repair keeps the selection and previous exercise intact. No image generation or OpenAI fallback is used by this flow.
+- Git tag `v74` remains the previous rollback point.

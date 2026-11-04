@@ -154,7 +154,7 @@ body .word-field input, body .word-field select, body .word-field textarea,
 body .profile-box input, body .folder-box input, body .polish-controls select,
 body .polish-dictionary-tools input, body .polish-dictionary-tools select,
 body .bulk-actions select, body .practice-search input { background: #192720; color: var(--ink); border-color: var(--line); }
-body .polish-dictionary-button, body .polish-used-chip, body .trainer-folder-control,
+body .polish-dictionary-button, body .polish-used-chip, body .polish-controls .trainer-folder-control,
 body .practice-folder-choices, body .practice-card-choices, body .practice-selection-footer { background: rgba(15, 27, 20, .8); color: var(--ink); }
 body #englishView .polish-controls, body #englishView .polish-exercise-card,
 body #englishView .status-box, body #cardCreatorDialog .mode-switch,

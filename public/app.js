@@ -7,7 +7,7 @@ const LANGUAGE_KEY = "action-cards:language:v1";
 const POLISH_KEY = "action-cards:polish:v1";
 const ENGLISH_TRAINER_KEY = "action-cards:english-trainer:v1";
 const STUDY_SETTINGS_KEY = "action-cards:study-settings:v1";
-const DEFAULT_CARDS_URL = "default-cards.json?v=74";
+const DEFAULT_CARDS_URL = "default-cards.json?v=75";
 const STARTER_PACKS_KEY = "action-cards:starter-packs:v1";
 const BASIC_ACTIONS_PACK = "basic-actions-v1";
 const BASIC_ACTIONS_FOLDER = "Стартовые / Действия с предметами";
@@ -3114,13 +3114,13 @@ async function requestPolishApi(path, payload) {
 
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
-        throw new Error(data.error || "DeepSeek unavailable");
+        throw Object.assign(new Error(data.error || "DeepSeek unavailable"), { retryable: response.status >= 500 || response.status === 429 });
       }
 
       return response.json();
     } catch (error) {
       lastError = error;
-      if (error.name === "AbortError" || attempt === 1) throw error;
+      if (error.name === "AbortError" || error.retryable === false || attempt === 1) throw error;
     } finally {
       clearTimeout(timeoutId);
     }
@@ -4196,7 +4196,8 @@ async function createNotesWordExercise(language, words, isCurrent = () => true) 
   await updateAiStatus();
   if (!state.deepSeekOnline) throw new Error("Для создания задания нужен интернет и подключённый DeepSeek.");
   const english = language === "english";
-  const focusWords = words.map((word) => word.word);
+  const wordKey = english ? englishTrainerWordKey : polishWordKey;
+  const focusWords = words.map((word) => wordKey(word.word));
   const { count, mode } = english ? englishTrainerExerciseSettings() : polishExerciseSettings();
   const data = await requestPolishApi(english ? "/api/english/sentence-trainer/create-exercise" : "/api/polish/create-exercise", {
     words, focusWords, requireAllFocus: true, count, mode, exerciseStyle: "statement",
@@ -4205,7 +4206,8 @@ async function createNotesWordExercise(language, words, isCurrent = () => true) 
   if (profile !== state.profileId) throw new Error("Профиль изменился. Повтори создание задания.");
   if (!isCurrent()) throw new Error("Создание отменено.");
   const exercise = data.exercise;
-  if (!exercise?.promptRu || !(english ? exercise.expectedEn : exercise.expectedPl) || !focusWords.every((word) => exercise.usedWords?.includes(word))) throw new Error("AI использовал не все выбранные слова. Попробуй ещё раз.");
+  const used = new Set((Array.isArray(exercise?.usedWords) ? exercise.usedWords : []).map(wordKey));
+  if (!exercise?.promptRu || !(english ? exercise.expectedEn : exercise.expectedPl) || !focusWords.every((word) => used.has(word))) throw new Error("DeepSeek вернул неполное задание. Выбранные слова сохранены.");
   setLanguage(language, { prefetch: false });
   if (english) { setEnglishPractice("sentences"); activateEnglishTrainerExercise({ ...exercise, mode, targetCount: count }); setEnglishTrainerStatus("Задание по выбранным словам готово.", "ok"); }
   else { activatePolishExercise({ ...exercise, mode, targetCount: count }); setPolishStatus("Задание по выбранным словам готово.", "ok"); }

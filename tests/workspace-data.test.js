@@ -35,8 +35,8 @@ test("upgrading the shell keeps per-profile downloaded image caches", async () =
   const handlers = new Map(); const deleted = [];
   vm.runInNewContext(fs.readFileSync(path.join(root, "public/service-worker.js"), "utf8"), {
     self: { addEventListener: (name, fn) => handlers.set(name, fn), clients: { claim: () => {} } },
-    caches: { keys: async () => ["action-cards:v72", "action-cards:v73", "action-cards:v73-mountain", "action-cards:v74", "action-cards:offline:v1:private-profile", "other-app"], delete: async (key) => deleted.push(key) },
+    caches: { keys: async () => ["action-cards:v72", "action-cards:v73", "action-cards:v73-mountain", "action-cards:v74", "action-cards:v75", "action-cards:offline:v1:private-profile", "other-app"], delete: async (key) => deleted.push(key) },
   });
   let work; handlers.get("activate")({ waitUntil: (promise) => { work = promise; } }); await work;
-  assert.deepEqual(deleted, ["action-cards:v72", "action-cards:v73", "action-cards:v73-mountain"]);
+  assert.deepEqual(deleted, ["action-cards:v72", "action-cards:v73", "action-cards:v73-mountain", "action-cards:v74"]);
 });

@@ -7,7 +7,7 @@ const { parseHTML } = require("linkedom");
 const root = path.resolve(__dirname, "..");
 const defaults = JSON.parse(fs.readFileSync(path.join(root, "public/default-cards.json")));
 
-async function launch({ offline = false, saved, storedFolder = "all", exerciseResponse, localStudySettings, importPlan, importImage, beforeSave, initialStorage = [], failLocalSave = false, cachesMock } = {}) {
+async function launch({ offline = false, saved, storedFolder = "all", exerciseResponse, exerciseFailureStatus, localStudySettings, importPlan, importImage, beforeSave, initialStorage = [], failLocalSave = false, cachesMock } = {}) {
   const { document, window } = parseHTML(fs.readFileSync(path.join(root, "public/index.html"), "utf8"));
   const storage = new Map([["action-cards:folder:v1", storedFolder], ...initialStorage]);
   let offlineNow = offline;
@@ -81,6 +81,7 @@ async function launch({ offline = false, saved, storedFolder = "all", exerciseRe
     if (["/api/english/sentence-trainer/create-exercise", "/api/polish/create-exercise"].includes(route)) {
       const body = JSON.parse(options.body);
       exerciseCalls += 1;
+      if (exerciseFailureStatus) return { ok: false, status: exerciseFailureStatus, json: async () => ({ error: "DeepSeek не смог составить полное задание после автоматического исправления. Выбранные слова сохранены." }) };
       const exercise = exerciseResponse ? exerciseResponse(body, exerciseCalls) : { promptRu: "Подними телефон.", expectedEn: "Pick up the phone.", expectedPl: "Podnieś telefon.", usedWords: body.focusWords };
       return { ok: true, json: async () => ({ exercise }) };
     }
@@ -274,6 +275,19 @@ test("Notes switches word dictionaries and creates Polish practice without unrel
   assert.equal(app.state.polish.currentExercise.expectedPl, "Podnieś telefon.");
   assert.equal(app.requests.filter((item) => item.route === "/api/polish/create-exercise").length, 1);
   assert.equal(app.state.polishHintVisible, false);
+});
+
+test("Notes preserves selected words after exhausted repair and does not retry a validation rejection", async () => {
+  const app = await launch({ exerciseFailureStatus: 422 });
+  app.api.mountainWorkspace.route("notes"); app.document.getElementById("openNoteWordsButton").click();
+  const input = app.document.querySelector("#noteWordChoices input"); input.checked = true; input.dispatchEvent(new app.window.Event("change"));
+  app.document.getElementById("createNoteExerciseButton").click(); await app.flush();
+  assert.equal(app.requests.filter((request) => request.route.endsWith("create-exercise")).length, 1);
+  assert.equal(app.document.getElementById("noteWordsDialog").open, true);
+  assert.equal(app.document.querySelector("#noteWordChoices input").checked, true);
+  assert.equal(app.document.getElementById("createNoteExerciseButton").disabled, false);
+  assert.match(app.document.getElementById("noteWordsStatus").textContent, /Выбранные слова сохранены/);
+  assert.equal(app.state.englishTrainer.currentExercise, null);
 });
 
 test("favorites select only bookmarked cards and progress is computed from actual reviews", async () => {

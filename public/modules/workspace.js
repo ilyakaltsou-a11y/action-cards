@@ -227,7 +227,7 @@
       noteWordsBusy = true; el("openNoteWordsButton").disabled = true;
       const selected = options.getWords(el("noteWordsLanguage").value).filter((word) => selectedWords.has(word.word));
       for (const id of ["createNoteExerciseButton", "noteWordsLanguage", "noteWordsSearch"]) el(id).disabled = true;
-      el("noteWordChoices").inert = true; el("noteWordsStatus").textContent = "AI составляет задание…";
+      el("noteWordChoices").inert = true; el("noteWordsStatus").textContent = "DeepSeek составляет и проверяет задание…";
       try {
         await options.onWordsExercise(el("noteWordsLanguage").value, selected, () => epoch === noteExerciseEpoch);
         if (profile !== options.getProfile()) throw new Error("Профиль изменился. Выбери слова заново.");
