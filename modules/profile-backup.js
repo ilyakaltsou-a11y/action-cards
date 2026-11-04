@@ -1,7 +1,7 @@
 (function (root) {
   const FORMAT = "action-cards-backup";
   const LIMIT = 64 * 1024 * 1024;
-  const fields = ["cards", "folders", "starterPacks", "studySettings", "activity", "englishTrainer", "polish"];
+  const fields = ["cards", "folders", "starterPacks", "studySettings", "activity", "englishTrainer", "polish", "workspace"];
   const key = (profile) => `action-cards:snapshot:v1:${profile}`;
   const historyKey = (profile) => `action-cards:backups:v1:${profile}`;
 
@@ -22,7 +22,7 @@
         (card.imageUrl == null || (typeof card.imageUrl === "string" && /^(?:https?:\/\/|data:image\/(?:png|jpeg|webp);base64,|\/?(?:images|assets)\/|$)/i.test(card.imageUrl))))) {
       throw new Error("Это не резервная копия приложения.");
     }
-    for (const field of ["studySettings", "activity", "englishTrainer", "polish"]) {
+    for (const field of ["studySettings", "activity", "englishTrainer", "polish", "workspace"]) {
       if (data[field] != null && (typeof data[field] !== "object" || Array.isArray(data[field]))) throw new Error("Повреждён файл копии.");
     }
     for (const field of ["englishTrainer", "polish"]) {

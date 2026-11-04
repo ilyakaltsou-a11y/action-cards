@@ -1,11 +1,11 @@
 {
-  "name": "Карточки действий",
-  "short_name": "Карточки",
+  "name": "English by Pictures",
+  "short_name": "Pictures",
   "description": "Карточки для изучения английских действий и фраз без перевода.",
   "start_url": ".",
   "display": "standalone",
-  "background_color": "#f2f4f7",
-  "theme_color": "#101828",
+  "background_color": "#101715",
+  "theme_color": "#101715",
   "icons": [
     {
       "src": "icon.svg",

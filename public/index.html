@@ -3,17 +3,19 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#101828" />
-    <title>Карточки действий</title>
+    <meta name="theme-color" content="#101715" />
+    <title>English by Pictures</title>
     <script>
       if (window.location.protocol === "file:") {
-        window.location.replace(`http://127.0.0.1:5176/${window.location.search || "?v=72"}`);
+        window.location.replace(`http://127.0.0.1:5176/${window.location.search || "?v=73"}`);
       }
     </script>
     <link rel="manifest" href="manifest.webmanifest" />
-    <link rel="stylesheet" href="styles.css?v=72" />
+    <link rel="stylesheet" href="styles.css?v=73" />
+    <link rel="stylesheet" href="mountain.css?v=73" />
   </head>
-  <body>
+  <body data-screen="home">
+    <div class="landscape-backdrop" aria-hidden="true"></div>
     <div class="app-shell">
       <header class="app-header">
         <button class="activity-button" id="activityButton" type="button" aria-label="Открыть активность">
@@ -21,8 +23,8 @@
           <span class="activity-count" id="activityCount">0</span>
         </button>
         <div>
-          <p class="eyebrow">English by pictures</p>
-          <h1>Карточки действий</h1>
+          <p class="eyebrow">Твой путь к языку</p>
+          <h1>English by Pictures</h1>
           <p class="save-state" id="saveState" role="status" aria-live="polite">Проверяем сохранение…</p>
         </div>
         <div class="header-actions">
@@ -30,6 +32,30 @@
           <button class="menu-button" id="openSettingsButton" type="button" aria-label="Открыть настройки">☰</button>
         </div>
       </header>
+      <section class="home-screen" id="homeScreen" aria-label="Главная">
+        <div class="home-welcome">
+          <div><p class="section-kicker">С возвращением</p><h2>Продолжим<br />обучение?</h2><p class="home-streak" id="homeStreak"></p></div>
+          <button class="daily-orbit" id="homeGoalButton" type="button" title="Дневная цель"><span id="homeGoalPercent">0%</span><small>цель дня</small></button>
+        </div>
+        <div class="home-actions">
+          <button class="home-action" type="button" data-workspace-route="learn"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#layers"></use></svg><span>Карточки</span><small id="homeCardCount">0 карточек</small></button>
+          <button class="home-action" type="button" data-workspace-route="progress"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#chart-no-axes-column"></use></svg><span>Прогресс</span><small id="homeReviewedCount">0 повторений</small></button>
+          <button class="home-action" id="homeFavoritesButton" type="button"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#bookmark"></use></svg><span>Избранное</span><small id="homeFavoriteCount">0 карточек</small></button>
+          <button class="home-action" id="homeOfflineButton" type="button"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#arrow-down-to-line"></use></svg><span>Офлайн</span><small id="homeOfflineCount">Скачать карточки</small></button>
+        </div>
+        <div class="home-library"><div class="section-heading"><h3>Мои наборы</h3><button type="button" class="icon-button" id="homeDeckButton" title="Все папки" aria-label="Все папки"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#arrow-right"></use></svg></button></div><div class="home-folder-list" id="homeFolders"></div></div>
+      </section>
+      <section class="workspace-screen" id="progressScreen" aria-labelledby="progressTitle" hidden>
+        <p class="section-kicker">Шаг за шагом</p><h2 id="progressTitle">Твой прогресс</h2>
+        <div class="period-switch" role="group" aria-label="Период прогресса"><button type="button" data-progress-days="7" aria-pressed="true">Неделя</button><button type="button" data-progress-days="30" aria-pressed="false">Месяц</button><button type="button" data-progress-days="365" aria-pressed="false">Год</button></div>
+        <div class="progress-chart" id="progressChart" role="img" aria-label="Повторения по дням"></div>
+        <div class="progress-totals" id="progressTotals"></div>
+      </section>
+      <section class="workspace-screen" id="notesScreen" aria-labelledby="notesTitle" hidden>
+        <div class="section-heading"><div><p class="section-kicker">Мысли и полезные фразы</p><h2 id="notesTitle">Notes</h2></div><button class="icon-button" id="newNoteButton" title="Новая заметка" aria-label="Новая заметка" type="button"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#plus"></use></svg></button></div>
+        <label class="search-field"><span class="sr-only">Поиск заметок</span><input id="notesSearch" type="search" placeholder="Найти заметку" /></label>
+        <div class="notes-layout"><div id="notesList" class="notes-list"></div><form id="noteEditor" class="note-editor" hidden><input id="noteTitle" aria-label="Название заметки" placeholder="Название" maxlength="120" /><textarea id="noteBody" aria-label="Текст заметки" placeholder="Фразы, примеры, вопросы…" rows="8" maxlength="20000"></textarea><div class="note-editor-actions"><span id="noteSaveState" role="status"></span><button class="soft-button" id="deleteNoteButton" type="button"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#trash-2"></use></svg>Удалить</button></div></form></div><button id="undoNoteButton" class="soft-button" type="button" hidden>Отменить удаление</button>
+      </section>
       <nav class="language-tabs" aria-label="Выбор языка">
         <button class="language-tab" id="englishModeButton" type="button" data-language="english">English</button>
         <button class="language-tab" id="polishModeButton" type="button" data-language="polish">Polski</button>
@@ -48,12 +74,12 @@
             </div>
             <span class="pill" id="reviewStatus"></span>
           </div>
-          <button type="button" class="study-folder-button" id="openStudyFoldersButton">
+          <div class="study-folder-row"><button type="button" class="study-folder-button" id="openStudyFoldersButton">
             <svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#folder"></use></svg>
             <span id="studyFolderLabel">Все папки</span>
             <svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#chevron-down"></use></svg>
           </button>
-          <button type="button" class="basic-actions-button" id="startBasicActionsButton">Базовые действия</button>
+          <button type="button" class="basic-actions-button" id="startBasicActionsButton">Базовые действия</button></div>
           <div class="study-mode-switch" role="group" aria-label="Режим карточек">
             <button type="button" data-study-mode="picture" aria-pressed="true">По картинке</button>
             <button type="button" data-study-mode="russian" aria-pressed="false">По русскому тексту</button>
@@ -97,6 +123,7 @@
             <span class="swipe-help swipe-help-left">← не знаю</span>
             <span class="swipe-help swipe-help-right">знаю →</span>
           </div>
+          <div class="card-extra-actions"><button type="button" class="icon-button" id="favoriteCardButton" aria-label="Добавить в избранное" aria-pressed="false" title="Избранное"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#bookmark"></use></svg></button><button type="button" class="icon-button" id="noteCardButton" aria-label="Заметка к карточке" title="Записать в Notes"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#notebook-pen"></use></svg></button></div>
 
         </section>
         <nav class="workspace-actions" aria-label="Действия с английскими карточками">
@@ -497,6 +524,7 @@
           <button class="soft-button" id="restoreBackupButton" type="button" disabled>Восстановить</button>
           <p id="backupStatus" role="status" aria-live="polite"></p>
         </section>
+        <section class="appearance-settings" aria-label="Оформление и загрузки"><button type="button" class="soft-button" id="openThemesButton"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#layers"></use></svg>Тема оформления</button><button type="button" class="soft-button" id="settingsOfflineButton"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#arrow-down-to-line"></use></svg>Офлайн-доступ</button></section>
       </section>
     </dialog>
 
@@ -657,11 +685,20 @@
         </div>
       </section>
     </dialog>
-    <script src="modules/practice-selection.js?v=72"></script>
-    <script src="modules/card-import.js?v=72"></script>
-    <script src="modules/activity.js?v=72"></script>
-    <script src="modules/swipe.js?v=72"></script>
-    <script src="modules/profile-backup.js?v=72"></script>
-    <script src="app.js?v=72"></script>
+    <script src="modules/practice-selection.js?v=73"></script>
+    <script src="modules/card-import.js?v=73"></script>
+    <script src="modules/activity.js?v=73"></script>
+    <script src="modules/swipe.js?v=73"></script>
+    <dialog class="deck-dialog" id="offlineDialog"><section class="deck-dialog-panel" aria-label="Офлайн-доступ"><div class="dialog-head"><div><p class="section-kicker">Всегда с собой</p><h2>Офлайн-доступ</h2></div><button type="button" class="icon-button" id="closeOfflineButton" aria-label="Закрыть офлайн-доступ">×</button></div><div id="offlineFolders" class="offline-folders"></div><div class="profile-actions"><button type="button" class="primary-button" id="downloadOfflineButton"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#arrow-down-to-line"></use></svg>Скачать</button><button type="button" class="soft-button" id="clearOfflineButton">Удалить загрузки</button></div><button type="button" class="soft-button" id="studyOfflineButton">Учить загруженные карточки</button><p id="offlineStatus" role="status" aria-live="polite"></p></section></dialog>
+    <dialog class="deck-dialog" id="themesDialog"><section class="deck-dialog-panel" aria-label="Тема оформления"><div class="dialog-head"><h2>Тема оформления</h2><button type="button" class="icon-button" id="closeThemesButton" aria-label="Закрыть темы">×</button></div><div class="theme-grid" id="themeGrid" role="group" aria-label="Выбор пейзажа"></div></section></dialog>
+    <nav class="main-dock" aria-label="Основная навигация">
+      <button type="button" data-workspace-route="home" aria-label="Главная" title="Главная"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#house"></use></svg><span>Главная</span></button>
+      <button type="button" data-workspace-route="learn" aria-label="Учиться" title="Учиться"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#layers"></use></svg><span>Учиться</span></button>
+      <button type="button" data-workspace-route="progress" aria-label="Прогресс" title="Прогресс"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#chart-no-axes-column"></use></svg><span>Прогресс</span></button>
+      <button type="button" data-workspace-route="notes" aria-label="Notes" title="Notes"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#notebook-pen"></use></svg><span>Notes</span></button>
+    </nav>
+    <script src="modules/profile-backup.js?v=73"></script>
+    <script src="modules/workspace.js?v=73"></script>
+    <script src="app.js?v=73"></script>
   </body>
 </html>

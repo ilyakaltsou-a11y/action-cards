@@ -1418,6 +1418,7 @@ async function handleGetCards(url, env) {
     activity: data?.activity && typeof data.activity === "object" ? data.activity : { days: {}, updatedAt: 0 },
     englishTrainer: data?.englishTrainer && typeof data.englishTrainer === "object" ? data.englishTrainer : { words: [], exercises: [], currentExercise: null },
     polish: data?.polish && typeof data.polish === "object" ? data.polish : { words: [], exercises: [], currentExercise: null },
+    ...(data?.workspace && typeof data.workspace === "object" ? { workspace: data.workspace } : {}),
   });
 }
 
@@ -1436,11 +1437,13 @@ async function handleSaveCards(request, env) {
   const activity = body.activity && typeof body.activity === "object" ? body.activity : { days: {}, updatedAt: 0 };
   const englishTrainer = body.englishTrainer && typeof body.englishTrainer === "object" ? body.englishTrainer : { words: [], exercises: [], currentExercise: null };
   const polish = body.polish && typeof body.polish === "object" ? body.polish : { words: [], exercises: [], currentExercise: null };
+  const previous = await env.CARDS_KV.get(`profile:${profile}`, "json");
+  const workspace = body.workspace && typeof body.workspace === "object" && !Array.isArray(body.workspace) ? mergeWorkspaceProfiles(previous?.workspace, body.workspace) : previous?.workspace;
   await checkpointProfile(env, profile);
   const savedAt = new Date().toISOString();
   await env.CARDS_KV.put(
     `profile:${profile}`,
-    JSON.stringify({ cards, starterPacks, studySettings, folders, activity, englishTrainer, polish, updatedAt: savedAt })
+    JSON.stringify({ cards, starterPacks, studySettings, folders, activity, englishTrainer, polish, ...(workspace ? { workspace } : {}), updatedAt: savedAt })
   );
   return json({ ok: true, savedAt });
 }
@@ -1455,6 +1458,21 @@ async function checkpointProfile(env, profile) {
   if (!previous || (!previous.cards?.length && !previous.englishTrainer?.words?.length && !previous.polish?.words?.length && !previous.folders?.length)) return;
   // Save before replacing the live profile; seven rotating slots bound storage use.
   await env.CARDS_KV.put(key, JSON.stringify({ date, createdAt: new Date().toISOString(), data: previous }));
+}
+
+function mergeWorkspaceProfiles(previous = {}, incoming = {}) {
+  previous = previous && typeof previous === "object" ? previous : {};
+  const newest = Number(incoming.themeUpdatedAt || 0) >= Number(previous.themeUpdatedAt || 0) ? incoming : previous;
+  const merged = { ...previous, ...incoming, theme: newest.theme || "alpine", themeUpdatedAt: Number(newest.themeUpdatedAt) || 0 };
+  for (const field of ["notes", "favorites"]) {
+    const entries = new Map();
+    for (const item of [...(Array.isArray(previous[field]) ? previous[field] : []), ...(Array.isArray(incoming[field]) ? incoming[field] : [])]) {
+      if (!item || typeof item.id !== "string") continue;
+      if (!entries.has(item.id) || Number(item.updatedAt || 0) >= Number(entries.get(item.id).updatedAt || 0)) entries.set(item.id, item);
+    }
+    merged[field] = [...entries.values()];
+  }
+  return merged;
 }
 
 async function handleProfileBackups(url, env) {

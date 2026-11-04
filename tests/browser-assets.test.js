@@ -43,14 +43,16 @@ test("versioned modules fall back to the offline cache without intercepting API 
   sw.listeners.get("fetch")({ request: new Request("https://cards.example/modules/activity.js?v=66"), respondWith: (promise) => { response = promise; } });
   assert.equal(await (await response).text(), "cached module");
   assert.equal(sw.matched[0].options.ignoreSearch, true);
-  for (const route of ["/api/status", "/images/private.png"]) {
+  for (const route of ["/api/status", "/api/backups"]) {
     sw.listeners.get("fetch")({ request: new Request(`https://cards.example${route}`), respondWith: () => assert.fail("Dynamic requests must not be cached") });
   }
+  sw.listeners.get("fetch")({ request: new Request("https://cards.example/images/private.png"), respondWith: (promise) => { response = promise; } });
+  assert.equal(await (await response).text(), "cached module");
 });
 
 test("compatibility browser copies match public sources including the new modules", () => {
   const { BROWSER_FILES } = require("../scripts/sync-browser.js");
-  for (const file of [...BROWSER_FILES, "modules/activity.js", "modules/swipe.js", "modules/practice-selection.js", "modules/card-import.js", "modules/profile-backup.js"]) {
+  for (const file of [...BROWSER_FILES, "modules/activity.js", "modules/swipe.js", "modules/practice-selection.js", "modules/card-import.js", "modules/profile-backup.js", "modules/workspace.js"]) {
     assert.equal(fs.readFileSync(path.join(root, file), "utf8"), fs.readFileSync(path.join(root, "public", file), "utf8"), file);
   }
 });

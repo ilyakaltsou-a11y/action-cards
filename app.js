@@ -7,7 +7,7 @@ const LANGUAGE_KEY = "action-cards:language:v1";
 const POLISH_KEY = "action-cards:polish:v1";
 const ENGLISH_TRAINER_KEY = "action-cards:english-trainer:v1";
 const STUDY_SETTINGS_KEY = "action-cards:study-settings:v1";
-const DEFAULT_CARDS_URL = "default-cards.json?v=72";
+const DEFAULT_CARDS_URL = "default-cards.json?v=73";
 const STARTER_PACKS_KEY = "action-cards:starter-packs:v1";
 const BASIC_ACTIONS_PACK = "basic-actions-v1";
 const BASIC_ACTIONS_FOLDER = "Стартовые / Действия с предметами";
@@ -65,6 +65,7 @@ const REVIEW_INTERVALS = [
 
 const state = {
   profileSyncReady: false,
+  workspace: {},
   cards: [],
   starterPacks: [],
   folders: [],
@@ -95,6 +96,8 @@ const state = {
   polishUsedWordsVisible: false,
   polishPrefetching: false,
 };
+
+let mountainWorkspace;
 
 const els = {
   studyTitle: document.querySelector("#studyTitle"),
@@ -622,12 +625,14 @@ function loadLocalCards() {
     state.activity = normalizeActivity(read(getLocalActivityKey(), "activity", {}));
     state.englishTrainer = normalizeEnglishTrainerState(read(getLocalEnglishTrainerKey(), "englishTrainer", {}));
     state.polish = normalizePolishState(read(getLocalPolishKey(), "polish", {}));
+    state.workspace = globalThis.MountainWorkspace.normalize(read(`action-cards:workspace:v1:${state.profileId}`, "workspace", {}));
   } catch {
     state.cards = [];
     state.folders = [];
     state.activity = normalizeActivity();
     state.englishTrainer = normalizeEnglishTrainerState();
     state.polish = normalizePolishState();
+    state.workspace = globalThis.MountainWorkspace.normalize();
   }
 }
 
@@ -658,6 +663,8 @@ async function loadServerCards() {
     const localPolish = normalizePolishState(state.polish);
     const serverPolish = normalizePolishState(data.polish);
     state.polish = mergePolishState(serverPolish, localPolish);
+    const serverWorkspace = globalThis.MountainWorkspace.normalize(data.workspace);
+    state.workspace = globalThis.MountainWorkspace.merge(serverWorkspace, state.workspace);
     await ensureStarterCards();
     persistCardsLocally();
     state.profileSyncReady = true;
@@ -674,9 +681,12 @@ async function loadServerCards() {
       !activitiesHaveSameSyncState(state.activity, serverActivity) ||
       englishTrainerSyncSignature(state.englishTrainer) !== englishTrainerSyncSignature(serverEnglishTrainer) ||
       polishSyncSignature(state.polish) !== polishSyncSignature(serverPolish)
+      || JSON.stringify(state.workspace) !== JSON.stringify(serverWorkspace)
     ) {
       syncCardsToServer();
     }
+    mountainWorkspace?.render();
+    mountainWorkspace?.autoDownload().catch(() => {});
   }
 }
 
@@ -708,6 +718,7 @@ async function loadOfflineStarterCards() {
   persistCardsLocally();
   renderStudy();
   setSaveState("На устройстве · нет связи с сервером", "warn");
+  mountainWorkspace?.render();
 }
 
 async function startBasicActions() {
@@ -775,6 +786,7 @@ function persistCardsLocally() {
     localStorage.setItem(getLocalActivityKey(), JSON.stringify(state.activity));
     localStorage.setItem(getLocalEnglishTrainerKey(), JSON.stringify(state.englishTrainer));
     localStorage.setItem(getLocalPolishKey(), JSON.stringify(state.polish));
+    localStorage.setItem(`action-cards:workspace:v1:${state.profileId}`, JSON.stringify(state.workspace));
   } catch { /* The complete profile is already stored in its atomic envelope. */ }
   state.localSaveFailed = false;
   return true;
@@ -787,6 +799,7 @@ function saveCards() {
   }
   if (saved) setSaveState("На устройстве · отправляем…", "pending");
   syncCardsToServer();
+  mountainWorkspace?.render();
 }
 
 function pendingSaveKey(profile = state.profileId) { return `action-cards:pending:v1:${profile}`; }
@@ -1070,6 +1083,7 @@ function syncCardsToServer({ force = false } = {}) {
     activity: state.activity,
     englishTrainer: state.englishTrainer,
     polish: state.polish,
+    workspace: state.workspace,
   });
   // Serialize snapshots so a slower earlier save cannot overwrite the completed import.
   cardSyncQueue = cardSyncQueue.then(async () => {
@@ -1274,7 +1288,7 @@ function reviewLabel(card) {
 }
 
 function persistActivity() {
-  localStorage.setItem(getLocalActivityKey(), JSON.stringify(state.activity));
+  persistCardsLocally();
   syncCardsToServer();
 }
 
@@ -1303,6 +1317,7 @@ function renderActivity() {
   els.activityStreakText.textContent = `Серия: ${streak} дн.`;
   els.activityGoalText.textContent = daysToGoal ? `Цель ${milestoneLabel(nextMilestone)}: еще ${daysToGoal} дн.` : `Цель ${milestoneLabel(nextMilestone)} выполнена`;
   els.activityFreezeText.textContent = `Заморозки: ${state.activity.freezes}`;
+  mountainWorkspace?.render();
 }
 
 function openAppDialog(dialog) {
@@ -3606,6 +3621,7 @@ async function restoreProfileCopy(copy) {
   state.activity = mergeActivity(state.activity, recoveredActivity);
   state.englishTrainer = mergeEnglishTrainerState(state.englishTrainer, recoveredEnglish);
   state.polish = mergePolishState(state.polish, recoveredPolish);
+  state.workspace = globalThis.MountainWorkspace.merge(state.workspace, data.workspace);
   const settings = normalizeStudySettings({ ...data.studySettings, updatedAt: now });
   if (Array.isArray(settings.selection?.cardIds)) settings.selection.cardIds = settings.selection.cardIds.map((id) => ids.get(id) || id);
   state.studySettings = settings;
@@ -4174,6 +4190,17 @@ if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js"));
 }
 
+mountainWorkspace = globalThis.MountainWorkspace.create({
+  document, storage: localStorage, getProfile: () => state.profileId, getData: () => state.workspace,
+  getCards: () => state.cards, getFolders: getAllFolders, cardFolder, currentCard,
+  getActivity: () => state.activity, summary: () => activityTracker.summary(),
+  onChange: (value, remote = true) => { state.workspace = value; if (remote) { saveCards(); return !state.localSaveFailed; } return persistCardsLocally(); },
+  onFolder: (folder) => { setLanguage("english"); setEnglishPractice("cards"); state.activeFolder = folder; useStudyFolder(folder); renderStudy(0); saveCards(); },
+  onSelection: (ids) => { setLanguage("english"); setEnglishPractice("cards"); practiceSelectionTarget = "cards"; applyPracticeSelection({ folderPaths: ["all"], cardIds: ids }); },
+  openDialog: openAppDialog, closeDialog: closeAppDialog, openActivity: openActivityDialog, openDeck: openDeckDialog,
+});
+els.englishModeButton.addEventListener("click", () => mountainWorkspace.route("learn"));
+els.polishModeButton.addEventListener("click", () => mountainWorkspace.route("learn"));
 initProfile();
 initLanguage();
 loadLocalCards();

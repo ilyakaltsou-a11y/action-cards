@@ -54,6 +54,23 @@ test("profile backups use private local slots and imported images round-trip wit
   assert.equal((await app.fetch("/api/backups/image", jsonBody({ profile: body.profile, dataUrl: "data:text/html;base64,YQ==" }))).status, 400);
 });
 
+test("Notes and themes survive legacy saves and concurrent clients merge notes and deletion markers", async (t) => {
+  const app = await fixture(t);
+  const profile = "deck-notes-42";
+  const workspace = { theme: "forest", themeUpdatedAt: 100, notes: [{ id: "a", title: "First", updatedAt: 100 }], favorites: [] };
+  await app.fetch("/api/cards", jsonBody({ profile, cards: [], workspace }, "PUT"));
+  await app.fetch("/api/cards", jsonBody({ profile, cards: [] }, "PUT"));
+  assert.equal((await (await app.fetch(`/api/cards?profile=${profile}`)).json()).workspace.notes[0].id, "a");
+  await app.fetch("/api/cards", jsonBody({ profile, cards: [], workspace: { theme: "alpine", themeUpdatedAt: 0, notes: [{ id: "b", title: "Second", updatedAt: 200 }] } }, "PUT"));
+  let loaded = (await (await app.fetch(`/api/cards?profile=${profile}`)).json()).workspace;
+  assert.equal(loaded.theme, "forest"); assert.equal(loaded.notes.length, 2);
+  await app.fetch("/api/cards", jsonBody({ profile, cards: [], workspace: { ...workspace, notes: [{ id: "a", title: "First", updatedAt: 300, deletedAt: 300 }] } }, "PUT"));
+  await app.fetch("/api/cards", jsonBody({ profile, cards: [], workspace }, "PUT"));
+  loaded = (await (await app.fetch(`/api/cards?profile=${profile}`)).json()).workspace;
+  assert.equal(loaded.notes.find((n) => n.id === "a").deletedAt, 300);
+  assert.equal(loaded.notes.length, 2);
+});
+
 test("local HTTP serves only public assets and retains legacy generated images", async (t) => {
   const app = await fixture(t);
   await fs.writeFile(path.join(app.root, "assets/ai/old.png"), Buffer.from([1, 2, 3]));

@@ -25,6 +25,14 @@ test("standalone Cloudflare build serves the canonical UI and shared API without
     assert.equal(response.headers.get("content-type"), "text/javascript; charset=utf-8");
     assert.equal(await response.text(), fs.readFileSync(path.join(root, "public", sourceUrl.split("?")[0]), "utf8"));
   }
+  const themeCss = await worker.fetch(new Request("https://cards.example/mountain.css?v=73"), {});
+  assert.equal(themeCss.headers.get("content-type"), "text/css; charset=utf-8");
+  assert.equal(await themeCss.text(), fs.readFileSync(path.join(root, "public/mountain.css"), "utf8"));
+  for (const theme of JSON.parse(fs.readFileSync(path.join(root, "data/design-themes.json"), "utf8")).themes) {
+    const photo = await worker.fetch(new Request(`https://cards.example/assets/themes/${theme.id}.jpg`), {});
+    assert.equal(photo.headers.get("content-type"), "image/jpeg");
+    assert.deepEqual(Buffer.from(await photo.arrayBuffer()), fs.readFileSync(path.join(root, `public/assets/themes/${theme.id}.jpg`)));
+  }
   const icons = await worker.fetch(new Request("https://cards.example/assets/icons.svg"), {});
   assert.equal(icons.status, 200);
   assert.equal(icons.headers.get("content-type"), "image/svg+xml");

@@ -30,6 +30,7 @@ const assets = [
   ["/app.js", "app.js", "text/javascript; charset=utf-8"],
   [`/styles.css?v=${stylesVersion}`, "styles.css", "text/css; charset=utf-8"],
   ["/styles.css", "styles.css", "text/css; charset=utf-8"],
+  ["/mountain.css", "mountain.css", "text/css; charset=utf-8"],
   [`/default-cards.json?v=${appVersion}`, "default-cards.json", "application/json; charset=utf-8"],
   ["/default-cards.json", "default-cards.json", "application/json; charset=utf-8"],
   ["/manifest.webmanifest", "manifest.webmanifest", "application/manifest+json; charset=utf-8"],

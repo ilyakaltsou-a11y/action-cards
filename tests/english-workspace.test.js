@@ -7,7 +7,7 @@ const { parseHTML } = require("linkedom");
 const root = path.resolve(__dirname, "..");
 const defaults = JSON.parse(fs.readFileSync(path.join(root, "public/default-cards.json")));
 
-async function launch({ offline = false, saved, storedFolder = "all", exerciseResponse, localStudySettings, importPlan, importImage, beforeSave, initialStorage = [], failLocalSave = false } = {}) {
+async function launch({ offline = false, saved, storedFolder = "all", exerciseResponse, localStudySettings, importPlan, importImage, beforeSave, initialStorage = [], failLocalSave = false, cachesMock } = {}) {
   const { document, window } = parseHTML(fs.readFileSync(path.join(root, "public/index.html"), "utf8"));
   const storage = new Map([["action-cards:folder:v1", storedFolder], ...initialStorage]);
   let offlineNow = offline;
@@ -102,6 +102,7 @@ async function launch({ offline = false, saved, storedFolder = "all", exerciseRe
     window, document, localStorage, fetch, URL, AbortController, AbortSignal,
     crypto: require("node:crypto").webcrypto, navigator: { language: "ru" },
     setTimeout: () => 0, clearTimeout: () => {}, setInterval: () => 0, confirm: () => true, console,
+    caches: cachesMock,
   };
   let clockOffset = 0;
   sandbox.Date = class extends Date {
@@ -110,7 +111,7 @@ async function launch({ offline = false, saved, storedFolder = "all", exerciseRe
   vm.createContext(sandbox);
   for (const script of document.querySelectorAll("script[src]")) {
     const file = script.getAttribute("src").split("?")[0];
-    const testApi = file === "app.js" ? "\nglobalThis.testApi = { state, swipes, activityTracker, renderStudy, loadServerCards, loadLocalCards, saveCards, restoreProfileCopy, profileSnapshot, startEditCard, currentCard, englishTrainerWords, mergeEnglishTrainerWords, renderEnglishTrainer, removeEnglishTrainerWord, boostEnglishTrainerWord, englishTrainerVocabularyForExercise, fetchEnglishTrainerExercise, englishExerciseTextsMatch, normalizeEnglishTrainerState, mergeEnglishTrainerState, renameFolder, deleteFolder };" : "";
+    const testApi = file === "app.js" ? "\nglobalThis.testApi = { state, mountainWorkspace, swipes, activityTracker, renderStudy, loadServerCards, loadLocalCards, saveCards, restoreProfileCopy, profileSnapshot, startEditCard, currentCard, englishTrainerWords, mergeEnglishTrainerWords, renderEnglishTrainer, removeEnglishTrainerWord, boostEnglishTrainerWord, englishTrainerVocabularyForExercise, fetchEnglishTrainerExercise, englishExerciseTextsMatch, normalizeEnglishTrainerState, mergeEnglishTrainerState, renameFolder, deleteFolder };" : "";
     vm.runInContext(fs.readFileSync(path.join(root, "public", file), "utf8") + testApi, sandbox, { filename: file });
   }
   const flush = async () => { for (let index = 0; index < 10; index += 1) await new Promise(setImmediate); };
@@ -183,6 +184,87 @@ function pointer(app, type, x, y, overrides = {}, target = app.document.getEleme
   target.dispatchEvent(event);
   return event;
 }
+
+test("mountain workspace routes, saves themes and edits Notes offline without changing the card library", async () => {
+  const app = await launch();
+  const count = app.state.cards.length;
+  assert.equal(app.document.body.dataset.screen, "home");
+  assert.equal(app.document.querySelectorAll("#themeGrid button").length, 9);
+  app.document.querySelector('[data-theme="forest"]').click(); await app.flush();
+  assert.equal(app.state.workspace.theme, "forest");
+  app.api.mountainWorkspace.route("notes");
+  app.document.getElementById("newNoteButton").click();
+  const title = app.document.getElementById("noteTitle"); title.value = "Coffee"; title.dispatchEvent(new app.window.Event("input"));
+  const body = app.document.getElementById("noteBody"); body.value = "Would you like some coffee?\nХочешь кофе?"; body.dispatchEvent(new app.window.Event("input"));
+  app.api.mountainWorkspace.route("home"); await app.flush();
+  assert.equal(app.getSaved().workspace.notes[0].title, "Coffee");
+  assert.equal(app.state.cards.length, count);
+  const reloaded = await launch({ offline: true, initialStorage: [...app.storage] });
+  assert.equal(reloaded.state.workspace.theme, "forest");
+  reloaded.api.mountainWorkspace.route("notes");
+  assert.match(reloaded.document.getElementById("notesList").textContent, /Coffee/);
+  reloaded.document.querySelector("#notesList button").click();
+  reloaded.document.getElementById("deleteNoteButton").click();
+  assert.ok(reloaded.state.workspace.notes[0].deletedAt);
+  reloaded.document.getElementById("undoNoteButton").click();
+  assert.equal(reloaded.state.workspace.notes[0].deletedAt, 0);
+  reloaded.document.getElementById("notesSearch").value = "not-found";
+  reloaded.document.getElementById("notesSearch").dispatchEvent(new reloaded.window.Event("input"));
+  assert.match(reloaded.document.getElementById("notesList").textContent, /Ничего не найдено/);
+  reloaded.document.getElementById("profileInput").value = "another-profile";
+  reloaded.document.getElementById("loadProfileButton").click(); await reloaded.flush();
+  assert.equal(reloaded.state.workspace.notes.length, 0);
+  assert.equal(reloaded.state.workspace.theme, "alpine");
+});
+
+test("favorites select only bookmarked cards and progress is computed from actual reviews", async () => {
+  const app = await launch();
+  app.api.mountainWorkspace.route("learn");
+  const card = app.api.currentCard();
+  app.document.getElementById("favoriteCardButton").click();
+  assert.equal(app.state.workspace.favorites[0].id, card.id);
+  app.document.getElementById("homeFavoritesButton").click();
+  assert.deepEqual(Array.from(app.state.studySettings.selection.cardIds), [card.id]);
+  assert.equal(app.state.englishPractice, "cards");
+  app.document.getElementById("favoriteCardButton").click();
+  assert.equal(app.state.workspace.favorites[0].active, false);
+  app.api.mountainWorkspace.route("progress");
+  assert.equal(app.document.querySelectorAll("#progressChart > div").length, 7);
+  app.document.querySelector('[data-progress-days="365"]').click();
+  assert.equal(app.document.querySelectorAll("#progressChart > div").length, 12);
+  assert.match(app.document.getElementById("progressTotals").textContent, /В базе/);
+  app.document.getElementById("polishModeButton").click();
+  app.api.mountainWorkspace.route("home");
+  app.document.querySelector("#homeFolders button").click();
+  assert.equal(app.state.language, "english");
+  assert.equal(app.state.englishPractice, "cards");
+  assert.equal(app.document.body.dataset.screen, "learn");
+});
+
+test("offline packs prefetch starter images, retain partial successes and keep profile caches separate", async () => {
+  const stores = new Map();
+  const cachesMock = { open: async (name) => {
+    if (!stores.has(name)) stores.set(name, new Map()); const cache = stores.get(name);
+    return { match: async (url) => cache.get(String(url)), put: async (url, response) => { cache.set(String(url), response); } };
+  }, delete: async (name) => stores.delete(name) };
+  const app = await launch({ cachesMock }); await app.flush();
+  const profile = app.state.profileId;
+  const key = `action-cards:offline:v1:${profile}`;
+  assert.equal(JSON.parse(app.storage.get(key)).cards.length, 20);
+  app.document.getElementById("homeOfflineButton").click();
+  app.document.getElementById("studyOfflineButton").click();
+  assert.equal(app.state.studySettings.selection.cardIds.length, 20);
+  assert.equal(app.document.body.dataset.screen, "learn");
+  assert.equal(app.document.getElementById("offlineDialog").open, false);
+  app.setOffline(true);
+  await app.api.mountainWorkspace.downloadCards([{ id: "missing", imageUrl: "/images/not-downloaded.png" }]);
+  assert.equal(JSON.parse(app.storage.get(key)).cards.length, 20);
+  assert.match(app.document.getElementById("offlineStatus").textContent, /Не удалось скачать: 1/);
+  app.document.getElementById("clearOfflineButton").click(); await app.flush();
+  assert.equal(stores.has(`action-cards:offline:v1:${profile}`), false);
+  assert.equal(app.storage.has(key), false);
+  assert.equal(app.state.cards.length, defaults.cards.length);
+});
 
 function touch(app, type, x, y, options = {}) {
   const point = { identifier: 7, clientX: x, clientY: y };

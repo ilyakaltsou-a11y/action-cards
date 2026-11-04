@@ -1,0 +1,53 @@
+{
+  "mode": "built-in image_gen",
+  "useCase": "photorealistic-natural",
+  "assetType": "portrait 2:3 mobile wallpaper",
+  "constraints": "Professional realistic landscape photograph, clear mountain/scenery in middle, natural foreground, expansive upper sky. No text, no UI, no people, no logos, no watermarks.",
+  "themes": [
+    {
+      "id": "alpine",
+      "name": "Альпы",
+      "scene": "A monumental jagged snow-capped alpine mountain at blue hour, peach and rose sunset clouds behind its summit, a dark emerald fir forest in foreground, a thin veil of valley mist. Restrained warm light on snow, realistic clear rock detail."
+    },
+    {
+      "id": "snow",
+      "name": "Снежные вершины",
+      "scene": "Majestic snow-covered alpine peaks in crisp morning light with a pale blue sky, deep charcoal rocky ridges below and turquoise glacial reflections at the bottom. Clear realistic snow texture."
+    },
+    {
+      "id": "forest",
+      "name": "Тихий лес",
+      "scene": "Tall evergreen fir trees in a secluded emerald forest with morning fog drifting between the trunks and soft silver daylight in the upper sky. Natural rich moss green and graphite, detailed tree silhouettes."
+    },
+    {
+      "id": "desert",
+      "name": "Тёплые дюны",
+      "scene": "Sculptural desert sand dunes at sunset, natural muted terracotta and muted rose highlights, deep graphite shadows on the lower dunes, expansive still peach-gray sky."
+    },
+    {
+      "id": "moon",
+      "name": "Лунная ночь",
+      "scene": "A sharp silver moon above an alpine mountain ridge at night, deep black charcoal sky with sparse delicate stars, silver snow reflecting moonlight and silhouetted trees at the bottom. Restrained realistic celestial photography."
+    },
+    {
+      "id": "ocean",
+      "name": "Побережье",
+      "scene": "A dramatic Atlantic ocean coast with clear teal waves breaking into white foam, dark coastal rocks at the bottom, a distant mountainous headland and silver cloudy sky. Natural photoreal sea textures."
+    },
+    {
+      "id": "aurora",
+      "name": "Северное сияние",
+      "scene": "Elegant natural green northern lights gently arcing across a black winter sky above a quiet snow-covered mountain valley, distant evergreen silhouettes, subtle teal reflections, realistic astrophotography, no fantasy effects."
+    },
+    {
+      "id": "sunrise",
+      "name": "Рассвет",
+      "scene": "Warm coral dawn sky over layered mountains and a dense dark evergreen forest, a narrow orange sliver of sun at the horizon, realistic beautiful natural atmosphere, detailed silhouetted trees."
+    },
+    {
+      "id": "stone",
+      "name": "Каменные горы",
+      "scene": "Monumental gray alpine mountain peaks in a calm monochrome cloudy morning, finely detailed gray rock and snow texture, silver fog in a valley, graphite forest below, refined black and white landscape photography."
+    }
+  ]
+}
