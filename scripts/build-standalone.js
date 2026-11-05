@@ -1,6 +1,6 @@
 const fs = require("node:fs");
 const path = require("node:path");
-const { syncBrowserCopies } = require("./sync-browser.js");
+const { BROWSER_FILES, syncBrowserCopies } = require("./sync-browser.js");
 
 const root = path.resolve(__dirname, "..");
 const publicDir = path.join(root, "public");
@@ -10,7 +10,6 @@ syncBrowserCopies(root);
 
 const indexHtml = fs.readFileSync(path.join(publicDir, "index.html"), "utf8");
 const appVersion = indexHtml.match(/app\.js\?v=(\d+)/)?.[1] || "latest";
-const stylesVersion = indexHtml.match(/styles\.css\?v=(\d+)/)?.[1] || appVersion;
 const MIME_TYPES = {
   ".css": "text/css; charset=utf-8",
   ".html": "text/html; charset=utf-8",
@@ -25,16 +24,8 @@ const MIME_TYPES = {
 
 const assets = [
   ["/", "index.html", "text/html; charset=utf-8"],
-  ["/index.html", "index.html", "text/html; charset=utf-8"],
-  [`/app.js?v=${appVersion}`, "app.js", "text/javascript; charset=utf-8"],
-  ["/app.js", "app.js", "text/javascript; charset=utf-8"],
-  [`/styles.css?v=${stylesVersion}`, "styles.css", "text/css; charset=utf-8"],
-  ["/styles.css", "styles.css", "text/css; charset=utf-8"],
-  ["/mountain.css", "mountain.css", "text/css; charset=utf-8"],
-  [`/default-cards.json?v=${appVersion}`, "default-cards.json", "application/json; charset=utf-8"],
+  ...BROWSER_FILES.map((file) => [`/${file}`, file, MIME_TYPES[path.extname(file)]]),
   ["/default-cards.json", "default-cards.json", "application/json; charset=utf-8"],
-  ["/manifest.webmanifest", "manifest.webmanifest", "application/manifest+json; charset=utf-8"],
-  ["/service-worker.js", "service-worker.js", "text/javascript; charset=utf-8"],
   ["/icon.svg", "icon.svg", "image/svg+xml"],
 ];
 
@@ -65,12 +56,13 @@ workerSource = workerSource.replace(assetDispatch, "return serveStatic(url);");
 
 output += `\n${workerSource}`;
 output += `\n\nfunction serveStatic(url) {\n`;
-output += `  const asset = STATIC_ASSETS.get(url.pathname + url.search) || STATIC_ASSETS.get(url.pathname) || STATIC_ASSETS.get("/");\n`;
+output += `  const asset = STATIC_ASSETS.get(url.pathname);\n`;
+output += `  if (!asset) return new Response("Asset not found", { status: 404, headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" } });\n`;
 output += `  const body = asset.encoding === "base64" ? Uint8Array.from(atob(asset.content), (char) => char.charCodeAt(0)) : asset.content;\n`;
 output += `  return new Response(body, {\n`;
 output += `    headers: {\n`;
 output += `      "Content-Type": asset.contentType,\n`;
-output += `      "Cache-Control": url.pathname === "/service-worker.js" ? "no-cache" : "public, max-age=300",\n`;
+output += `      "Cache-Control": ["/", "/index.html", "/service-worker.js"].includes(url.pathname) ? "no-cache" : "public, max-age=300",\n`;
 output += `    },\n`;
 output += `  });\n`;
 output += `}\n`;

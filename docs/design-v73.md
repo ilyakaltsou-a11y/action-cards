@@ -95,3 +95,12 @@ The generated single-file Worker embeds all images and is much larger; the asset
 - Invalid calendar dates are ignored; future dates do not increase today's streak. Existing profile fields, backups, image downloads and AI APIs remain compatible; no user data reset or migration is required.
 - Home/navigation and focused-study layout now live in `public/journey.css`; old orbit/four-tile/four-tab rules are removed. Saved-exercise UI is isolated in `public/modules/text-library.js`. Both files ship in the offline shell and generated compatibility copies.
 - Git tag `v76` remains the pre-update rollback point. Production publication is still separate from the source push.
+
+## v78 Mobile Publication Repair
+
+- The generated v77 Worker omitted `journey.css`, even though local assets and offline declarations included it. The deployed stylesheet URL returned fallback HTML with HTTP 200. The layout therefore differed between the published phone app and the local desktop preview.
+- The standalone build now takes every root browser file from the same `BROWSER_FILES` inventory used by compatibility syncing. Missing static paths return 404 rather than HTML. Regression coverage fetches every stylesheet declared in the HTML, versioned and unversioned, checking its exact contents and CSS MIME type.
+- Shell installation uses reload requests and a new cache version to replace previously cached HTML responses. Shell refreshes revalidate HTTP responses, and generated HTML uses `no-cache` so reopening the app does not retain a stale deployment. Per-profile downloaded images and saved data remain untouched.
+- Mobile-only rules constrain typography, intrinsic grid widths, dialog sizes and form controls. Text autosizing is fixed at 100% without disabling user zoom; form fonts are at least 16px. Narrow action groups stack, and landscape study uses two columns. Desktop composition remains unchanged.
+- Verify the generated Worker in a local HTTP preview as well as the ordinary asset server. The production fix requires republishing the new bundle; a GitHub push alone cannot repair the existing deployment.
+- Git tag `v77` remains the rollback point.

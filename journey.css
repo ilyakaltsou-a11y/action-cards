@@ -1,4 +1,5 @@
 /* Home, cards and texts share one restrained glass surface over the selected landscape. */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 body .app-shell { width: min(1080px, 100%); padding-bottom: calc(110px + env(safe-area-inset-bottom)); }
 body .app-header { display: grid; grid-template-columns: minmax(0, 1fr) 42px 42px; gap: 12px; align-items: center; margin-bottom: 26px; }
 .header-save { grid-column: 1 / -1; grid-row: 2; }
@@ -162,4 +163,68 @@ body .study-rating-button:disabled { opacity: .35; cursor: default; }
   body .study-rating-button { width: 56px; height: 56px; min-height: 56px; padding: 12px; }
   body.is-card-session .phrase { font-size: 24px; }
   body.is-card-session .is-dialogue .phrase { font-size: 18px; }
+}
+
+/* Keep mobile forms independent of legacy desktop font sizes and intrinsic grid widths. */
+@media (max-width: 650px) {
+  body .app-shell { padding-inline: max(14px, env(safe-area-inset-left)) max(14px, env(safe-area-inset-right)); }
+  body .app-shell > *, body .word-field, body .polish-controls > *, body .dialog-head > *,
+  .home-study-heading > div, .study-phrase-row > *, .profile-actions > * { min-width: 0; }
+  body .app-header { margin-bottom: 16px; row-gap: 6px; }
+  body .home-intro h2, body .texts-heading h2 { font-size: 26px; line-height: 1.2; }
+  .home-intro { margin-bottom: 16px; }
+  body .home-goal { margin-bottom: 18px; }
+  body .home-study-heading h3 { font-size: 20px; }
+  .home-study-heading { gap: 12px; }
+  .home-study-heading > img { width: 54px; height: 54px; flex-basis: 54px; }
+  .home-study-entry { padding: 14px; border-radius: 18px; }
+  .home-text-entry strong { font-size: 20px; }
+  body .home-text-entry { gap: 12px; padding: 14px; border-radius: 18px; min-height: 80px; }
+  body .home-library .section-heading h3 { font-size: 21px; }
+  .home-library .landscape-folder { grid-template-columns: 52px minmax(0, 1fr) 18px; min-height: 70px; gap: 10px; }
+  .home-library .landscape-folder img { width: 52px; height: 52px; }
+  .home-library .landscape-folder strong { font-size: 15px; }
+  body .texts-heading .section-heading { gap: 10px; }
+  body .texts-heading .icon-button { flex: 0 0 42px; }
+  body[data-section="texts"] .polish-controls { gap: 10px; align-items: end; }
+  body input:not([type="checkbox"]):not([type="radio"]), body textarea, body select,
+  body .word-field input, body .word-field textarea, body .word-field select,
+  body[data-section="texts"] .polish-controls select { font-size: 16px; font-weight: 400; }
+  body[data-section="texts"] .polish-exercise-card { padding: 14px; border-radius: 16px; }
+  body[data-section="texts"] .polish-exercise-card h3 { font-size: 21px; }
+  body .deck-dialog { width: calc(100% - 24px); max-width: 680px; max-height: calc(100svh - 24px); max-height: calc(100dvh - 24px); }
+  body .deck-dialog-panel { width: 100%; max-width: 100%; padding: 16px; gap: 12px; }
+  body .deck-dialog-panel h2 { font-size: 22px; line-height: 1.25; overflow-wrap: anywhere; }
+  body .deck-dialog-panel h3 { font-size: 18px; }
+  body .deck-dialog-panel .word-field, body .deck-dialog-panel label { font-size: 14px; }
+  body .deck-dialog-panel .word-field input, body .deck-dialog-panel .word-field select,
+  body .deck-dialog-panel .profile-box input { min-height: 46px; padding: 10px 12px; }
+  body .deck-dialog-panel textarea { padding: 12px; }
+  body .deck-dialog-panel button:not(.icon-button):not(.listen-button):not(.folder-tree-toggle):not(.priority-word-button) { font-size: 14px; min-height: 44px; }
+  body .deck-dialog-panel .soft-button, body .deck-dialog-panel .main-button,
+  body .deck-dialog-panel .success-button { padding: 10px 14px; }
+  body .deck-dialog-panel .field-help, body .deck-dialog-panel .profile-box p,
+  body .deck-dialog-panel .activity-progress-text { font-size: 13px; line-height: 1.45; }
+  body .deck-dialog-panel .activity-summary { font-size: 20px; }
+  body .deck-dialog-panel .activity-goal-row { font-size: 13px; }
+  body .profile-box { padding: 12px; gap: 12px; }
+  body .goal-option { padding: 14px; }
+  body .goal-option strong { font-size: 18px; }
+  body .goal-option span { font-size: 14px; }
+  body .note-editor input { font-size: 18px; }
+  body .saved-text strong { font-size: 16px; }
+  body.is-card-session .phrase { font-size: 24px; }
+  body.is-card-session .is-dialogue .phrase { font-size: 18px; }
+  body.is-card-session .card-picture-translation, body.is-card-session .translation-text { font-size: 16px; }
+}
+@media (max-width: 380px) {
+  .profile-shortcuts { grid-template-columns: 1fr; }
+  body[data-section="texts"] .polish-task-actions { grid-template-columns: 1fr; }
+}
+@media (max-width: 900px) and (max-height: 480px) and (orientation: landscape) {
+  body.is-card-session #englishCardsPractice { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: 40px minmax(0, 1fr) 78px; }
+  .study-session-head { grid-column: 1 / -1; }
+  .study-card-stage { grid-column: 1; grid-row: 2 / span 2; }
+  body .study-reveal-button { grid-column: 2; grid-row: 2; align-self: end; }
+  body.is-card-session .memory-controls { grid-column: 2; grid-row: 3; gap: 8px; }
 }

@@ -16,6 +16,7 @@ test("standalone Cloudflare build serves the canonical UI and shared API without
   const worker = sandbox.worker;
   const home = await worker.fetch(new Request("https://cards.example/"), {});
   assert.equal(home.status, 200);
+  assert.equal(home.headers.get("cache-control"), "no-cache");
   assert.equal(await home.text(), fs.readFileSync(path.join(root, "public/index.html"), "utf8"));
   const { document } = parseHTML(fs.readFileSync(path.join(root, "public/index.html"), "utf8"));
   for (const script of document.querySelectorAll("script[src]")) {
@@ -25,9 +26,19 @@ test("standalone Cloudflare build serves the canonical UI and shared API without
     assert.equal(response.headers.get("content-type"), "text/javascript; charset=utf-8");
     assert.equal(await response.text(), fs.readFileSync(path.join(root, "public", sourceUrl.split("?")[0]), "utf8"));
   }
-  const themeCss = await worker.fetch(new Request("https://cards.example/mountain.css?v=73"), {});
-  assert.equal(themeCss.headers.get("content-type"), "text/css; charset=utf-8");
-  assert.equal(await themeCss.text(), fs.readFileSync(path.join(root, "public/mountain.css"), "utf8"));
+  for (const link of document.querySelectorAll('link[rel="stylesheet"]')) {
+    const href = link.getAttribute("href");
+    for (const route of [href, href.split("?")[0]]) {
+      const response = await worker.fetch(new Request(`https://cards.example/${route}`), {});
+      assert.equal(response.status, 200, route);
+      assert.equal(response.headers.get("content-type"), "text/css; charset=utf-8", `${route} must not serve fallback HTML`);
+      assert.equal(await response.text(), fs.readFileSync(path.join(root, "public", href.split("?")[0]), "utf8"));
+    }
+  }
+  const missing = await worker.fetch(new Request("https://cards.example/missing-layout.css?v=999"), {});
+  assert.equal(missing.status, 404);
+  assert.equal(missing.headers.get("content-type"), "text/plain; charset=utf-8");
+  assert.doesNotMatch(await missing.text(), /<!doctype/i);
   for (const theme of JSON.parse(fs.readFileSync(path.join(root, "data/design-themes.json"), "utf8")).themes) {
     const photo = await worker.fetch(new Request(`https://cards.example/assets/themes/${theme.id}.jpg`), {});
     assert.equal(photo.headers.get("content-type"), "image/jpeg");

@@ -11,20 +11,24 @@ function serviceWorker() {
   const matched = [];
   let cached = [];
   let networkFetches = 0;
+  const fetchOptions = [];
   const sandbox = {
-    URL,
+    URL, Request,
     self: { addEventListener: (type, listener) => listeners.set(type, listener), location: new URL("https://cards.example/"), skipWaiting: () => {} },
     caches: {
-      open: async () => ({ addAll: async (assets) => { cached = [...assets]; } }),
+      open: async () => ({ addAll: async (assets) => {
+        for (const asset of assets) assert.equal(asset.cache, "reload", "shell upgrades must bypass stale HTTP responses");
+        cached = [...assets].map((asset) => `.${new URL(asset.url).pathname}`);
+      } }),
       match: async (request, options) => { matched.push({ url: request.url, options }); return new Response("cached module"); },
     },
-    fetch: async () => { networkFetches++; throw new Error("Offline"); },
+    fetch: async (_request, options) => { networkFetches++; fetchOptions.push(options); throw new Error("Offline"); },
   };
   vm.runInNewContext(fs.readFileSync(path.join(root, "public/service-worker.js"), "utf8"), sandbox);
-  return { listeners, matched, cached: () => cached, networkFetches: () => networkFetches };
+  return { listeners, matched, cached: () => cached, networkFetches: () => networkFetches, fetchOptions: () => fetchOptions };
 }
 
-test("offline installation includes every browser script in its declared load order", async () => {
+test("offline installation includes every browser script and stylesheet with a fresh HTTP response", async () => {
   const sw = serviceWorker();
   let installation;
   sw.listeners.get("install")({ waitUntil: (promise) => { installation = promise; } });
@@ -32,7 +36,8 @@ test("offline installation includes every browser script in its declared load or
   const { document } = parseHTML(fs.readFileSync(path.join(root, "public/index.html"), "utf8"));
   const scripts = [...document.querySelectorAll("script[src]")].map((script) => script.getAttribute("src").split("?")[0]);
   assert.equal(scripts.at(-1), "app.js");
-  for (const file of scripts) {
+  const stylesheets = [...document.querySelectorAll('link[rel="stylesheet"]')].map((link) => link.getAttribute("href").split("?")[0]);
+  for (const file of [...scripts, ...stylesheets]) {
     assert.ok(sw.cached().includes(`./${file}`), `${file} must be available offline`);
     assert.ok(fs.existsSync(path.join(root, "public", file)));
   }
@@ -46,6 +51,7 @@ test("versioned modules fall back to the offline cache without intercepting API 
   sw.listeners.get("fetch")({ request: { url: "https://action-cards.ilya-kaltsou.workers.dev/images/test.jpg", method: "GET", destination: "image" }, respondWith: (promise) => { response = promise; } });
   assert.equal(await (await response).text(), "cached module");
   assert.equal(sw.networkFetches(), 1, "Downloaded external images must not need a network request");
+  assert.equal(sw.fetchOptions()[0].cache, "no-cache", "shell refresh must not reuse the previous deployment's HTTP cache");
   assert.equal(sw.matched[0].options.ignoreSearch, true);
   for (const route of ["/api/status", "/api/backups"]) {
     sw.listeners.get("fetch")({ request: new Request(`https://cards.example${route}`), respondWith: () => assert.fail("Dynamic requests must not be cached") });

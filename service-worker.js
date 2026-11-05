@@ -1,4 +1,4 @@
-const CACHE_NAME = "action-cards:v77";
+const CACHE_NAME = "action-cards:v78";
 const ASSETS = [
   "./",
   "./index.html",
@@ -31,7 +31,8 @@ const ASSETS = [
 const ASSET_SET = new Set(ASSETS);
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS)));
+  // Reload shell files so a previous HTML fallback cannot survive as a cached stylesheet.
+  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS.map((asset) => new Request(new URL(asset, self.location), { cache: "reload" })))));
   self.skipWaiting();
 });
 
@@ -53,8 +54,9 @@ self.addEventListener("fetch", (event) => {
   }
   if (event.request.method !== "GET" || !isStaticAssetRequest(event.request)) return;
 
+  const refreshShell = url.pathname === "/" || /\.(?:html|css|js|webmanifest)$/.test(url.pathname);
   event.respondWith(
-    fetch(event.request)
+    fetch(event.request, { cache: refreshShell ? "no-cache" : "default" })
       .then((response) => {
         if (response.ok) {
           const copy = response.clone();
