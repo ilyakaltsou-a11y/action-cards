@@ -88,7 +88,7 @@ test("a missed day automatically consumes one freeze and preserves the streak", 
   const summary = app.api.summary();
   assert.equal(app.state().freezes, 0);
   assert.equal(app.state().frozenDays["2026-10-02"], true);
-  assert.equal(summary.streak, 2);
+  assert.equal(summary.streak, 1, "a protected day preserves the chain without counting as study");
   assert.equal(summary.flameLevel, 0);
   assert.equal(summary.todayDone, false);
   app.api.summary();
@@ -146,4 +146,38 @@ test("activity merging and sync comparisons preserve counts and ignore map order
   assert.equal(merged.frozenDays["2026-10-03"], true);
   assert.equal(activitiesHaveSameSyncState(merged, { ...merged, days: { "2026-10-02": 7, "2026-10-01": 7 }, updatedAt: 999 }), true);
   assert.deepEqual(server.days, { "2026-10-01": 7, "2026-10-02": 4 });
+});
+
+test("a month of frozen days cannot turn one real study day into a thirty-day streak", () => {
+  const frozenDays = {};
+  for (let day = 2; day <= 30; day++) frozenDays[`2026-10-${String(day).padStart(2, "0")}`] = true;
+  const app = tracker({ goalMode: "medium", days: { "2026-10-01": 7 }, frozenDays, freezes: 0, lastWeeklyFreeze: "2026-w44" }, new Date(2026, 9, 31, 12));
+  assert.equal(app.api.summary().streak, 1);
+  for (let n = 0; n < 7; n++) app.api.recordStudy();
+  assert.equal(app.api.summary().streak, 2);
+  assert.equal(Object.keys(app.state().frozenDays).length, 29, "stored protection history is not erased");
+});
+
+test("a genuinely completed month is preserved, while future and invalid dates cannot increase today's streak", () => {
+  const days = {};
+  for (let day = 1; day <= 30; day++) days[`2026-10-${String(day).padStart(2, "0")}`] = 7;
+  const app = tracker({ goalMode: "medium", days }, new Date(2026, 9, 30, 12));
+  assert.equal(app.api.summary().streak, 30);
+  const clean = normalizeActivity({ days: { "2026-02-30": 7, "2026-10-31": 99, "2026-10-30": 1.9 } });
+  assert.equal(clean.days["2026-02-30"], undefined);
+  assert.equal(clean.days["2026-10-30"], 1);
+  const futureOnly = tracker({ ...clean, goalMode: "medium" }, new Date(2026, 9, 30, 12));
+  assert.equal(futureOnly.api.summary().streak, 0);
+  assert.equal(futureOnly.api.summary().flameLevel, 0);
+});
+
+test("sync does not resurrect consumed freezes or overwrite a newer goal with stale device settings", () => {
+  const older = { freezes: 8, goalMode: "easy", updatedAt: 10 };
+  const newer = { freezes: 0, frozenDays: { "2026-10-02": true }, goalMode: "hard", updatedAt: 20 };
+  for (const [left, right] of [[older, newer], [newer, older]]) {
+    const result = mergeActivity(left, right);
+    assert.equal(result.freezes, 0);
+    assert.equal(result.goalMode, "hard");
+    assert.equal(result.frozenDays["2026-10-02"], true);
+  }
 });

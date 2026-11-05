@@ -30,13 +30,23 @@
     const set = (next, remote = true) => options.onChange(normalize(next), remote);
 
     function route(next) {
+      const destination = ["cards", "texts"].includes(next) ? next : "";
+      if (destination) next = "learn";
       if (!["home", "learn", "progress", "notes"].includes(next)) return;
       flushNote(); screen = next;
+      if (destination) options.onDestination(destination);
       document.body.dataset.screen = next;
       el("homeScreen").hidden = next !== "home"; el("progressScreen").hidden = next !== "progress"; el("notesScreen").hidden = next !== "notes";
-      document.querySelectorAll(".main-dock [data-workspace-route]").forEach((button) => button.setAttribute("aria-current", button.dataset.workspaceRoute === next ? "page" : "false"));
+      options.closeDialog(el("settingsDialog")); options.closeDialog(el("activityDialog"));
       window.scrollTo?.(0, 0);
       render();
+    }
+    function renderNavigation() {
+      const section = screen === "learn" ? options.getDestination() : screen;
+      document.body.dataset.section = section;
+      document.querySelectorAll(".main-dock [data-workspace-route]").forEach((button) => button.setAttribute("aria-current", button.dataset.workspaceRoute === section ? "page" : "false"));
+      el("workspaceLanguageLabel").textContent = options.getLanguage() === "polish" ? "Polski" : "English";
+      options.onNavigation?.();
     }
     function renderThemes() {
       const grid = el("themeGrid");
@@ -60,7 +70,7 @@
         const text = document.createElement("span"); const title = document.createElement("strong"); title.textContent = folder.split(" / ").at(-1);
         const count = document.createElement("small"); count.textContent = cardCount(cards.length); text.append(title, count);
         const arrow = document.createElement("span"); arrow.textContent = "›"; arrow.setAttribute("aria-hidden", "true"); button.append(image, text, arrow); list.appendChild(button);
-        button.addEventListener("click", () => { options.onFolder(folder); route("learn"); });
+        button.addEventListener("click", () => { options.onFolder(folder); route("cards"); });
       });
     }
     function renderProgress() {
@@ -83,7 +93,7 @@
       chart.setAttribute("aria-label", `${total} повторений за ${period} дней`);
       const cards = options.getCards(); const reviewed = cards.filter((c) => c.attempts > 0).length;
       const totals = el("progressTotals"); totals.replaceChildren();
-      [["Повторений", total], ["Карточек изучено", reviewed], ["Серия", `${options.summary().streak} дн.`], ["В базе", cards.length]].forEach(([label, value]) => {
+      [["Оценок карточек", total], ["Карточек повторено", reviewed], ["Дней занятий в серии", options.summary().streak], ["Карточек в базе", cards.length]].forEach(([label, value]) => {
         const item = document.createElement("div"); const name = document.createElement("small"); name.textContent = label;
         const number = document.createElement("strong"); number.textContent = String(value); item.append(name, number); totals.appendChild(item);
       });
@@ -175,11 +185,20 @@
       downloading = true; try { await downloadCards(cards, true); } catch { /* Retry remains available from the download screen. */ } finally { downloading = false; }
     }
     function render() {
+      renderNavigation();
       options.onStudyView?.(screen === "learn");
       renderThemes(); const summary = options.summary(); const cards = options.getCards();
-      el("homeStreak").textContent = summary.streak ? `${summary.streak} дней подряд` : "Новый день — новый шаг";
-      el("homeGoalPercent").textContent = `${summary.progress}%`; el("homeGoalButton").style.setProperty("--progress", `${summary.progress * 3.6}deg`);
-      el("homeCardCount").textContent = cardCount(cards.length); el("homeReviewedCount").textContent = `${cards.reduce((sum, c) => sum + (c.attempts || 0), 0)} повторений`;
+      const dayLabel = { one: "день", few: "дня", many: "дней", other: "дня" }[new Intl.PluralRules("ru").select(summary.streak)];
+      el("homeStreak").textContent = summary.streak ? `${summary.streak} ${dayLabel} занятий в серии` : "Серия пока не начата";
+      el("homeGoalCount").textContent = `${Math.min(summary.todayCount, summary.goal)} из ${summary.goal} повторений`;
+      el("homeGoalMeter").style.setProperty("--goal-progress", `${summary.progress}%`);
+      el("homeGoalMeter").setAttribute("aria-valuemax", String(summary.goal));
+      el("homeGoalMeter").setAttribute("aria-valuenow", String(Math.min(summary.todayCount, summary.goal)));
+      el("homeCardCount").textContent = `${cardCount(options.getStudyCards().length)} в выбранном наборе`;
+      el("homeStudyTitle").textContent = options.getLanguage() === "polish" ? "Карточки English" : "Учить карточки";
+      el("homeStudyPreview").src = options.currentCard()?.imageUrl || `assets/themes/${data().theme}.jpg`;
+      document.querySelectorAll("[data-start-mode]").forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.startMode === options.getStudyMode())));
+      el("homeReviewedCount").textContent = `${cards.reduce((sum, c) => sum + (c.attempts || 0), 0)} оценок карточек`;
       const favorites = data().favorites.filter((f) => f.active && cards.some((c) => c.id === f.id));
       el("homeFavoriteCount").textContent = cardCount(favorites.length);
       el("homeOfflineCount").textContent = offlineRecord().cards.length ? `${offlineRecord().cards.length} загружено` : "Скачать карточки";
@@ -245,7 +264,9 @@
     document.querySelectorAll("[data-progress-days]").forEach((button) => button.addEventListener("click", () => { period = Number(button.dataset.progressDays); document.querySelectorAll("[data-progress-days]").forEach((b) => b.setAttribute("aria-pressed", String(b === button))); renderProgress(); }));
     el("homeGoalButton").addEventListener("click", options.openActivity);
     el("homeDeckButton").addEventListener("click", options.openDeck);
-    el("homeFavoritesButton").addEventListener("click", () => { options.onSelection(data().favorites.filter((f) => f.active).map((f) => f.id)); route("learn"); });
+    el("homeAddWordsButton").addEventListener("click", options.onDictionary);
+    document.querySelectorAll("[data-start-mode]").forEach((button) => button.addEventListener("click", () => options.onStudyMode(button.dataset.startMode)));
+    el("homeFavoritesButton").addEventListener("click", () => { options.onSelection(data().favorites.filter((f) => f.active).map((f) => f.id)); route("cards"); });
     el("studyOfflineButton").addEventListener("click", () => { options.onSelection(offlineRecord().cards.map((c) => c.id)); options.closeDialog(el("offlineDialog")); options.closeDialog(el("settingsDialog")); route("learn"); });
     el("favoriteCardButton").addEventListener("click", () => {
       const card = options.currentCard(); if (!card) return; const next = data(); const old = next.favorites.find((f) => f.id === card.id);
@@ -256,7 +277,7 @@
     el("noteTitle").addEventListener("input", editNote); el("noteBody").addEventListener("input", editNote); el("notesSearch").addEventListener("input", renderNotes);
     el("deleteNoteButton").addEventListener("click", () => { flushNote(); const next = data(); const note = next.notes.find((n) => n.id === noteId); if (!note) return; note.deletedAt = note.updatedAt = Date.now(); undoId = note.id; noteId = ""; set(next); el("noteEditor").hidden = true; renderNotes(); });
     el("undoNoteButton").addEventListener("click", () => { const next = data(); const note = next.notes.find((n) => n.id === undoId); if (!note) return; note.deletedAt = 0; note.updatedAt = Date.now(); undoId = ""; set(next); openNote(note.id); });
-    el("homeOfflineButton").addEventListener("click", openOffline); el("settingsOfflineButton").addEventListener("click", openOffline);
+    el("homeOfflineButton").addEventListener("click", openOffline);
     el("openThemesButton").addEventListener("click", () => options.openDialog(el("themesDialog")));
     el("closeThemesButton").addEventListener("click", () => options.closeDialog(el("themesDialog")));
     el("themesDialog").addEventListener("click", (event) => { if (event.target === el("themesDialog")) options.closeDialog(el("themesDialog")); });
@@ -272,7 +293,7 @@
     });
     el("clearOfflineButton").addEventListener("click", async () => { if (!root.caches || downloading) return; const profile = options.getProfile(); await root.caches.delete(cacheName(profile)); storage.removeItem(offlineKey(profile)); el("offlineStatus").textContent = "Загрузки удалены"; render(); });
     window.addEventListener("pagehide", flushNote);
-    return { render, route, autoDownload, downloadCards, openOffline };
+    return { render, renderNavigation, route, autoDownload, downloadCards, openOffline };
   }
   root.MountainWorkspace = { themes, normalize, merge, create };
 })(globalThis);

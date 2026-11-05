@@ -7,7 +7,7 @@ const { parseHTML } = require("linkedom");
 const root = path.resolve(__dirname, "..");
 const defaults = JSON.parse(fs.readFileSync(path.join(root, "public/default-cards.json")));
 
-async function launch({ offline = false, saved, storedFolder = "all", exerciseResponse, exerciseFailureStatus, localStudySettings, importPlan, importImage, beforeSave, initialStorage = [], failLocalSave = false, cachesMock } = {}) {
+async function launch({ offline = false, saved, storedFolder = "all", exerciseResponse, exerciseFailureStatus, localStudySettings, importPlan, importImage, beforeSave, initialStorage = [], failLocalSave = false, cachesMock, chooseGoal = true } = {}) {
   const { document, window } = parseHTML(fs.readFileSync(path.join(root, "public/index.html"), "utf8"));
   const storage = new Map([["action-cards:folder:v1", storedFolder], ...initialStorage]);
   let offlineNow = offline;
@@ -117,7 +117,7 @@ async function launch({ offline = false, saved, storedFolder = "all", exerciseRe
   }
   const flush = async () => { for (let index = 0; index < 10; index += 1) await new Promise(setImmediate); };
   await flush();
-  document.querySelector('[data-goal-mode="medium"]').click();
+  if (chooseGoal) document.querySelector('[data-goal-mode="medium"]').click();
   return { document, window, state: sandbox.testApi.state, swipe: sandbox.testApi.swipes, api: sandbox.testApi, requests, listeners, flush, storage, setOffline: (value) => { offlineNow = value; }, advanceTime: (milliseconds) => { clockOffset += milliseconds; }, getSaved: () => remote };
 }
 
@@ -305,7 +305,7 @@ test("favorites select only bookmarked cards and progress is computed from actua
   assert.equal(app.document.querySelectorAll("#progressChart > div").length, 7);
   app.document.querySelector('[data-progress-days="365"]').click();
   assert.equal(app.document.querySelectorAll("#progressChart > div").length, 12);
-  assert.match(app.document.getElementById("progressTotals").textContent, /В базе/);
+  assert.match(app.document.getElementById("progressTotals").textContent, /Карточек в базе/);
   app.document.getElementById("polishModeButton").click();
   app.api.mountainWorkspace.route("home");
   app.document.querySelector("#homeFolders button").click();
@@ -740,6 +740,103 @@ test("focused study preserves reveal order, repeat is ungraded and rating button
   const next = app.api.currentCard(); const nextAttempts = next.attempts || 0;
   doc.getElementById("gotItButton").click();
   assert.equal(app.state.cards.find((entry) => entry.id === next.id).attempts, nextAttempts + 1);
+});
+
+test("the three destinations keep reveal modes, real daily progress and profile tools consistent", async () => {
+  const app = await launch(); const doc = app.document;
+  assert.deepEqual(Array.from(doc.querySelectorAll(".main-dock button"), (button) => button.dataset.workspaceRoute), ["home", "cards", "texts"]);
+  assert.equal(doc.body.dataset.section, "home");
+  assert.equal(doc.getElementById("homeGoalCount").textContent, "0 из 7 повторений");
+  doc.querySelector('[data-start-mode="russian"]').click();
+  doc.querySelector('.main-dock [data-workspace-route="cards"]').click();
+  assert.equal(doc.body.dataset.section, "cards");
+  assert.equal(doc.getElementById("cardRussianPrompt").hidden, false);
+  const reviewed = app.api.currentCard(); const attempts = reviewed.attempts;
+  doc.getElementById("revealStudyButton").click();
+  assert.equal(app.state.flipped, true);
+  assert.equal(reviewed.attempts, attempts);
+  assert.equal(app.api.activityTracker.summary().todayCount, 0);
+  doc.getElementById("repeatStudyButton").click();
+  assert.equal(app.api.activityTracker.summary().todayCount, 0);
+  doc.getElementById("gotItButton").click();
+  assert.equal(app.api.activityTracker.summary().todayCount, 1);
+  assert.equal(doc.getElementById("homeGoalCount").textContent, "1 из 7 повторений");
+  assert.equal(doc.getElementById("activityFlame").classList.contains("is-lit"), false);
+  doc.querySelector('.main-dock [data-workspace-route="texts"]').click();
+  assert.equal(doc.body.dataset.section, "texts");
+  assert.equal(doc.getElementById("textsHeading").hidden, false);
+  assert.equal(doc.getElementById("englishSentencesPractice").hidden, false);
+  assert.equal(doc.body.classList.contains("is-card-session"), false);
+  doc.getElementById("polishModeButton").click();
+  assert.equal(doc.getElementById("workspaceLanguageLabel").textContent, "Polski");
+  doc.getElementById("textsDictionaryButton").click();
+  assert.equal(doc.getElementById("polishWordsDialog").open, true);
+  doc.getElementById("closePolishWordsButton").click();
+  assert.equal(doc.getElementById("polishWordsDialog").open, false);
+  doc.querySelector('.main-dock [data-workspace-route="home"]').click();
+  assert.equal(doc.getElementById("textsHeading").hidden, true);
+  doc.getElementById("homeAddWordsButton").click();
+  assert.equal(doc.getElementById("polishWordsDialog").open, true);
+});
+
+test("the reveal command never shows both languages at once and does not grade the card", async () => {
+  const app = await launch(); const doc = app.document;
+  app.api.mountainWorkspace.route("cards");
+  doc.querySelector('[data-study-mode="picture"]').click();
+  const card = app.api.currentCard(); const before = card.attempts;
+  doc.getElementById("revealStudyButton").click();
+  assert.equal(app.state.flipped, true);
+  assert.equal(doc.getElementById("cardTranslation").classList.contains("is-hidden"), true);
+  assert.equal(doc.getElementById("revealStudyButton").textContent, "Показать перевод");
+  doc.getElementById("revealStudyButton").click();
+  assert.equal(doc.getElementById("cardTranslation").classList.contains("is-hidden"), false);
+  assert.equal(doc.getElementById("revealStudyButton").textContent, "К картинке");
+  doc.getElementById("revealStudyButton").click();
+  assert.equal(app.state.flipped, false);
+  assert.equal(card.attempts, before);
+  doc.getElementById("revealStudyButton").click();
+  assert.equal(doc.getElementById("cardTranslation").classList.contains("is-hidden"), true);
+});
+
+test("first-visit goal selection appears when starting cards, not over the new home screen", async () => {
+  const app = await launch({ chooseGoal: false });
+  assert.equal(app.document.getElementById("goalDialog").open, false);
+  app.api.mountainWorkspace.route("cards");
+  assert.equal(app.document.getElementById("goalDialog").open, true);
+  app.document.querySelector('[data-goal-mode="medium"]').click();
+  assert.equal(app.document.getElementById("goalDialog").open, false);
+  assert.equal(app.state.activity.goalMode, "medium");
+});
+
+test("saved texts reopen offline per language without AI calls or consuming word priorities", async () => {
+  const english = { id: "saved-en", promptRu: "Возьми телефон.", expectedEn: "Pick up the phone.", mode: "easy", usedWords: ["pick up"], createdAt: 123 };
+  const polish = { id: "saved-pl", promptRu: "Я читаю книгу.", expectedPl: "Czytam książkę.", mode: "medium", createdAt: 456 };
+  const app = await launch({ saved: { cards: defaults.cards.slice(0, 3), starterPacks: [], englishTrainer: { words: [{ word: "pick up", boostRemaining: 4 }], exercises: [english] }, polish: { words: [], exercises: [polish] } } });
+  app.setOffline(true); const doc = app.document;
+  const beforeCalls = app.requests.length;
+  app.api.mountainWorkspace.route("texts");
+  doc.querySelector('[data-text-view="library"]').click();
+  assert.equal(doc.getElementById("textArchive").hidden, false);
+  assert.match(doc.getElementById("textArchiveList").textContent, /Возьми телефон/);
+  doc.querySelector("#textArchiveList button").click();
+  await app.flush();
+  assert.equal(app.state.englishTrainer.currentExercise.id, english.id);
+  assert.equal(doc.body.dataset.textView, "create");
+  assert.equal(app.state.englishTrainer.words[0].boostRemaining, 4);
+  assert.equal(app.state.englishTrainerHintVisible, false);
+  assert.equal(app.requests.slice(beforeCalls).some((request) => request.route.includes("create-exercise")), false);
+  doc.getElementById("polishModeButton").click();
+  doc.querySelector('[data-text-view="library"]').click();
+  assert.match(doc.getElementById("textArchiveList").textContent, /Я читаю книгу/);
+  assert.doesNotMatch(doc.getElementById("textArchiveList").textContent, /Возьми телефон/);
+  doc.querySelector("#textArchiveList button").click();
+  assert.equal(app.state.polish.currentExercise.id, polish.id);
+  assert.equal(app.state.polishHintVisible, false);
+  doc.querySelector('[data-text-view="library"]').click();
+  doc.getElementById("newProfileButton").click(); await app.flush();
+  assert.equal(doc.body.dataset.textView, "create");
+  doc.querySelector('[data-text-view="library"]').click();
+  assert.doesNotMatch(doc.getElementById("textArchiveList").textContent, /Я читаю книгу/);
 });
 
 test("focused study menu keeps library tools accessible and closes safely with Escape or mode changes", async () => {

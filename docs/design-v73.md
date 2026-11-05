@@ -84,3 +84,14 @@ The generated single-file Worker embeds all images and is much larger; the asset
 - The three round controls are Hard, Repeat and Easy. Hard/Easy call the existing review actions, exactly like left/right swipes. Repeat resets the same card without changing its grade, position or activity count.
 - Session controls live in `public/modules/study-session.js`, loaded before `app.js` and included in the offline shell. Existing touch axis-lock and mouse swipe logic is unchanged. No profile schema or API change is required.
 - Git tag `v75` is the rollback point before this screen update. GitHub source saves remain separate from production publication.
+
+## v77 Three Destinations
+
+- The persistent bottom navigation now has Home, Cards and Texts. Home contains the daily review target, picture/Russian-first mode choice, the current card set, folders and vocabulary entry. Existing landscape themes are preserved.
+- Notes, favorites, offline downloads and activity remain reachable from the profile menu. Polish vocabulary entry moves into its own dialog; Polish translation practice stays in Texts. Flashcards remain the existing English feature, labelled accordingly when Polish is selected.
+- Texts reuses the existing DeepSeek translation trainer and own-text workflow. "My texts" reopens the last 30 saved exercises for the current language without generating another exercise or consuming vocabulary priorities. This is not a new story-generation API; existing hidden hints and answer checking are retained.
+- Daily progress is explicitly a count of card ratings. Flips, translation reveals, the ungraded Repeat control, word creation and text generation do not advance it. The flame stays grey until the chosen daily target is reached.
+- Frozen dates bridge gaps but no longer increase the number of studied days. A month of protection following one completed day therefore displays one studied day, not thirty. Real completed days and stored protection history are retained. Freeze balance and goal mode prefer the newest synchronized activity record instead of reviving the maximum stale balance.
+- Invalid calendar dates are ignored; future dates do not increase today's streak. Existing profile fields, backups, image downloads and AI APIs remain compatible; no user data reset or migration is required.
+- Home/navigation and focused-study layout now live in `public/journey.css`; old orbit/four-tile/four-tab rules are removed. Saved-exercise UI is isolated in `public/modules/text-library.js`. Both files ship in the offline shell and generated compatibility copies.
+- Git tag `v76` remains the pre-update rollback point. Production publication is still separate from the source push.

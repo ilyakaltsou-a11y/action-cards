@@ -8,6 +8,17 @@
   const ACTIVITY_MILESTONES = [14, 30, 180, 365];
   const FREEZE_REVIEW_STEP = 30;
 
+  function isDateKey(value) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+    const date = new Date(`${value}T12:00:00Z`);
+    return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+  }
+
+  function countValue(value, limit) {
+    const number = Number(value);
+    return typeof value !== "boolean" && Number.isFinite(number) ? Math.max(0, Math.min(limit, Math.floor(number))) : 0;
+  }
+
   function isGoalMode(mode) {
     return Object.hasOwn(DAILY_GOAL_OPTIONS, mode);
   }
@@ -16,8 +27,8 @@
     const days = {};
     if (activity?.days && typeof activity.days === "object") {
       Object.entries(activity.days).forEach(([date, count]) => {
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
-        const cleanCount = Math.max(0, Math.min(999, Number(count) || 0));
+        if (!isDateKey(date)) return;
+        const cleanCount = countValue(count, 999);
         if (cleanCount > 0) days[date] = cleanCount;
       });
     }
@@ -25,15 +36,15 @@
     const frozenDays = {};
     if (activity?.frozenDays && typeof activity.frozenDays === "object") {
       Object.entries(activity.frozenDays).forEach(([date, isFrozen]) => {
-        if (/^\d{4}-\d{2}-\d{2}$/.test(date) && isFrozen) frozenDays[date] = true;
+        if (isDateKey(date) && isFrozen === true) frozenDays[date] = true;
       });
     }
 
     return {
       days,
       frozenDays,
-      freezes: Math.max(0, Math.min(999, Number(activity?.freezes) || 0)),
-      totalReviews: Math.max(0, Number(activity?.totalReviews) || 0),
+      freezes: countValue(activity?.freezes, 999),
+      totalReviews: countValue(activity?.totalReviews, Number.MAX_SAFE_INTEGER),
       goalMode: isGoalMode(activity?.goalMode) ? activity.goalMode : "",
       lastWeeklyFreeze: String(activity?.lastWeeklyFreeze || ""),
       updatedAt: Number.isFinite(activity?.updatedAt) ? activity.updatedAt : 0,
@@ -43,6 +54,7 @@
   function mergeActivity(serverActivity = {}, localActivity = {}) {
     const server = normalizeActivity(serverActivity);
     const local = normalizeActivity(localActivity);
+    const latest = local.updatedAt >= server.updatedAt ? local : server;
     const days = { ...server.days };
     const frozenDays = { ...server.frozenDays, ...local.frozenDays };
 
@@ -53,9 +65,9 @@
     return {
       days,
       frozenDays,
-      freezes: Math.max(server.freezes || 0, local.freezes || 0),
+      freezes: latest.freezes,
       totalReviews: Math.max(server.totalReviews || 0, local.totalReviews || 0),
-      goalMode: local.goalMode || server.goalMode || "",
+      goalMode: latest.goalMode || local.goalMode || server.goalMode || "",
       lastWeeklyFreeze: [server.lastWeeklyFreeze, local.lastWeeklyFreeze].sort().at(-1) || "",
       updatedAt: Math.max(server.updatedAt || 0, local.updatedAt || 0),
     };
@@ -127,16 +139,16 @@
 
     function completedActivityDates() {
       const dates = new Set();
+      if (!hasChosenActivityGoal()) return dates;
       Object.entries(getActivity().days || {}).forEach(([date, count]) => {
-        if (count >= dailyActivityGoal()) dates.add(date);
+        if (date <= localDateKey() && count >= dailyActivityGoal()) dates.add(date);
       });
-      Object.keys(getActivity().frozenDays || {}).forEach((date) => dates.add(date));
       return dates;
     }
 
     function grantWeeklyFreeze() {
       const currentWeek = weekKey();
-      if (getActivity().lastWeeklyFreeze === currentWeek) return false;
+      if (getActivity().lastWeeklyFreeze >= currentWeek) return false;
       getActivity().lastWeeklyFreeze = currentWeek;
       getActivity().freezes += 1;
       return true;
@@ -179,11 +191,12 @@
       const completed = completedActivityDates();
       const today = localDateKey();
       const yesterday = shiftDateKey(today, -1);
-      let cursor = completed.has(today) ? today : completed.has(yesterday) ? yesterday : "";
+      let cursor = completed.has(today) ? today : yesterday;
       let streak = 0;
 
-      while (cursor && completed.has(cursor)) {
-        streak += 1;
+      // Frozen dates bridge a gap, but only actual completed days increase the streak.
+      while (completed.has(cursor) || isFrozenActivityDate(cursor)) {
+        if (completed.has(cursor)) streak += 1;
         cursor = shiftDateKey(cursor, -1);
       }
 
@@ -197,10 +210,8 @@
       return `${days} дней`;
     }
 
-    function flameLevel(todayCount, todayDone, streak) {
-      if (!todayCount && !todayDone) return 0;
-      if (todayCount < 3) return 1;
-      if (!todayDone) return 2;
+    function flameLevel(todayDone, streak) {
+      if (!todayDone) return 0;
       if (streak >= 14) return 5;
       if (streak >= 7) return 4;
       return 3;
@@ -258,7 +269,7 @@
         todayCount, goal, todayDone, streak, nextMilestone,
         daysToGoal: Math.max(0, nextMilestone - streak),
         progress: Math.min(100, Math.round((todayCount / goal) * 100)),
-        flameLevel: flameLevel(todayCount, todayDone, streak),
+        flameLevel: flameLevel(todayDone, streak),
         goalLabel: dailyActivityGoalLabel(),
       };
     }

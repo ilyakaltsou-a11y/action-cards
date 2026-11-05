@@ -7,7 +7,7 @@ const LANGUAGE_KEY = "action-cards:language:v1";
 const POLISH_KEY = "action-cards:polish:v1";
 const ENGLISH_TRAINER_KEY = "action-cards:english-trainer:v1";
 const STUDY_SETTINGS_KEY = "action-cards:study-settings:v1";
-const DEFAULT_CARDS_URL = "default-cards.json?v=76";
+const DEFAULT_CARDS_URL = "default-cards.json?v=77";
 const STARTER_PACKS_KEY = "action-cards:starter-packs:v1";
 const BASIC_ACTIONS_PACK = "basic-actions-v1";
 const BASIC_ACTIONS_FOLDER = "Стартовые / Действия с предметами";
@@ -334,12 +334,40 @@ const swipes = globalThis.ActionCardsSwipe.createSwipeController({
 });
 studySession = globalThis.ActionCardsStudySession.create({
   document, eventTarget: window, getCard: currentCard,
+  getRevealState: () => ({ flipped: state.flipped, russian: state.studySettings.mode === "russian" || Boolean(currentCard()?.textOnly), translationVisible: !els.cardTranslation.classList.contains("is-hidden") }),
   onClose: () => { swipes.cancel(); mountainWorkspace.route("home"); },
   onRepeat: () => renderStudy(),
+  onReveal: () => {
+    if (state.flipped && !els.cardTranslation.hidden && els.cardTranslation.classList.contains("is-hidden")) toggleTranslation();
+    else flipCard();
+  },
   onSentences: () => setEnglishPractice("sentences"),
   onPolish: () => setLanguage("polish"),
   onCommand: (id) => document.getElementById(id).click(),
 });
+const textLibrary = globalThis.ActionCardsTextLibrary.create({
+  document, getProfile: () => state.profileId, getLanguage: () => state.language,
+  getWordCount: () => state.language === "polish" ? state.polish.words.length : englishTrainerWords().length,
+  getExercises: () => state.language === "polish" ? state.polish.exercises : state.englishTrainer.exercises,
+  onDictionary: openActiveDictionary,
+  onOpen: (exercise) => {
+    if (state.language === "polish") {
+      state.polish.currentExercise = normalizePolishExercise(exercise); state.polish.feedback = null;
+      state.polishHintVisible = state.polishUsedWordsVisible = false; els.polishAnswerInput.value = "";
+      renderPolish();
+    } else {
+      state.englishTrainer.currentExercise = normalizeEnglishTrainerExercise(exercise); state.englishTrainer.feedback = null;
+      state.englishTrainerHintVisible = state.englishTrainerUsedWordsVisible = false; els.englishTrainerAnswerInput.value = "";
+      renderEnglishTrainer();
+    }
+    saveCards();
+  },
+});
+
+function openActiveDictionary() {
+  if (state.language === "polish") openAppDialog(document.getElementById("polishWordsDialog"));
+  else openEnglishTrainerDictionary();
+}
 
 function normalizeWord(value) {
   return value.trim().toLowerCase().replace(/[^a-z -]/g, "").replace(/\s+/g, " ");
@@ -1290,6 +1318,7 @@ function toggleTranslation(event) {
   if (!currentCard()) return;
   const shouldHide = !els.cardTranslation.classList.contains("is-hidden");
   setTranslation(currentCard().translation, shouldHide);
+  studySession.render();
 }
 
 function reviewLabel(card) {
@@ -1316,7 +1345,7 @@ function setFlameLevel(element, level) {
 
 function renderActivity() {
   if (!els.activitySummary || !els.activityButton) return;
-  const { todayCount, goal, todayDone, progress, streak, nextMilestone, daysToGoal, flameLevel: currentFlameLevel, goalLabel } = activityTracker.summary();
+  const { todayCount, goal, todayDone, progress, streak, nextMilestone, flameLevel: currentFlameLevel } = activityTracker.summary();
 
   els.activityFlame.classList.toggle("is-lit", todayDone);
   els.activityDialogFlame.classList.toggle("is-lit", todayDone);
@@ -1327,12 +1356,12 @@ function renderActivity() {
     "aria-label",
     todayDone ? `Активность: серия ${streak} дней. Открыть детали.` : `Активность: ${Math.min(todayCount, goal)} из ${goal}. Открыть детали.`
   );
-  els.activitySummary.textContent = `${Math.min(todayCount, goal)}/${goal} карточек`;
+  els.activitySummary.textContent = `${Math.min(todayCount, goal)} из ${goal} повторений`;
   els.activityProgressFill.style.width = `${progress}%`;
-  els.activityProgressText.textContent = todayDone ? "Огонек зажжен сегодня" : `${goalLabel} уровень · осталось ${goal - Math.min(todayCount, goal)}`;
-  els.activityStreakText.textContent = `Серия: ${streak} дн.`;
-  els.activityGoalText.textContent = daysToGoal ? `Цель ${milestoneLabel(nextMilestone)}: еще ${daysToGoal} дн.` : `Цель ${milestoneLabel(nextMilestone)} выполнена`;
-  els.activityFreezeText.textContent = `Заморозки: ${state.activity.freezes}`;
+  els.activityProgressText.textContent = todayDone ? "Цель на сегодня выполнена" : `Цель на день: ${goal} оценок карточек`;
+  els.activityStreakText.textContent = `Дней занятий в серии: ${streak}`;
+  els.activityGoalText.textContent = `Следующая отметка: ${milestoneLabel(nextMilestone)}`;
+  els.activityFreezeText.textContent = `Заморозки: ${state.activity.freezes} · сохраняют серию, но не добавляют дни занятий`;
   mountainWorkspace?.render();
 }
 
@@ -1363,7 +1392,7 @@ function syncGoalDialog() {
     closeGoalDialog();
     return;
   }
-  openGoalDialog();
+  if (document.body.dataset.section === "cards") openGoalDialog();
 }
 
 function chooseActivityGoal(mode) {
@@ -1403,7 +1432,7 @@ function renderStudy(index = state.currentIndex) {
   state.flipped = false;
   const card = currentCard();
 
-  els.studyTitle.textContent = "Карточка";
+  els.studyTitle.textContent = cardFolder(card).split(" / ").at(-1) || "Карточки";
   els.reviewStatus.textContent = reviewLabel(card);
   els.flashcard.classList.remove("is-flipped");
   els.flashcard.style.transform = "";
@@ -1466,6 +1495,7 @@ function updateCardFaceAccessibility() {
   els.flashcard.setAttribute("aria-label", state.flipped
     ? (state.studySettings.mode === "russian" || currentCard()?.textOnly ? "Показать русский текст" : "Показать картинку")
     : "Показать фразу на английском");
+  studySession?.render();
 }
 
 function renderDeck() {
@@ -1715,6 +1745,7 @@ function flipCard() {
   if (!swipes.canFlip()) return;
   if (!currentCard()) return;
   state.flipped = !state.flipped;
+  if (!state.flipped) hideTranslation();
   els.flashcard.classList.toggle("is-flipped", state.flipped);
   updateCardFaceAccessibility();
 }
@@ -2751,6 +2782,7 @@ function setEnglishPractice(practice) {
   els.englishSentencesTab.setAttribute("aria-pressed", String(!cards));
   if (!cards) renderEnglishTrainer();
   renderStudySession();
+  mountainWorkspace?.renderNavigation();
 }
 
 function renderStudySession(active = document.body.dataset.screen === "learn") {
@@ -4238,6 +4270,14 @@ async function createNotesWordExercise(language, words, isCurrent = () => true) 
 mountainWorkspace = globalThis.MountainWorkspace.create({
   document, storage: localStorage, getProfile: () => state.profileId, getData: () => state.workspace,
   getCards: () => state.cards, getFolders: getAllFolders, cardFolder, currentCard,
+  getStudyCards: getStudyDeck, getStudyMode: () => state.studySettings.mode, onStudyMode: setStudyMode,
+  getDestination: () => state.language === "english" && state.englishPractice === "cards" ? "cards" : "texts",
+  onDestination: (destination) => {
+    if (destination === "cards") { setLanguage("english", { prefetch: false }); setEnglishPractice("cards"); renderStudy(); }
+    else setEnglishPractice("sentences");
+  },
+  onDictionary: openActiveDictionary,
+  onNavigation: () => { textLibrary.render(); syncGoalDialog(); },
   getActivity: () => state.activity, summary: () => activityTracker.summary(),
   onStudyView: renderStudySession,
   getLanguage: () => state.language,
@@ -4252,8 +4292,11 @@ mountainWorkspace = globalThis.MountainWorkspace.create({
   onSelection: (ids) => { setLanguage("english"); setEnglishPractice("cards"); practiceSelectionTarget = "cards"; applyPracticeSelection({ folderPaths: ["all"], cardIds: ids }); },
   openDialog: openAppDialog, closeDialog: closeAppDialog, openActivity: openActivityDialog, openDeck: openDeckDialog,
 });
-els.englishModeButton.addEventListener("click", () => mountainWorkspace.route("learn"));
-els.polishModeButton.addEventListener("click", () => mountainWorkspace.route("learn"));
+for (const button of [els.englishModeButton, els.polishModeButton]) button.addEventListener("click", () => {
+  document.getElementById("workspaceLanguagePicker").removeAttribute("open");
+  mountainWorkspace.render();
+});
+document.getElementById("closePolishWordsButton").addEventListener("click", () => closeAppDialog(document.getElementById("polishWordsDialog")));
 initProfile();
 initLanguage();
 loadLocalCards();

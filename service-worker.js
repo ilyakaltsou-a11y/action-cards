@@ -1,4 +1,4 @@
-const CACHE_NAME = "action-cards:v76";
+const CACHE_NAME = "action-cards:v77";
 const ASSETS = [
   "./",
   "./index.html",
@@ -12,6 +12,8 @@ const ASSETS = [
   "./modules/profile-backup.js",
   "./modules/workspace.js",
   "./modules/study-session.js",
+  "./modules/text-library.js",
+  "./journey.css",
   "./assets/themes/alpine.jpg",
   "./assets/themes/snow.jpg",
   "./assets/themes/forest.jpg",

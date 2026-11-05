@@ -1,7 +1,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 
-const BROWSER_FILES = ["app.js", "index.html", "styles.css", "mountain.css", "service-worker.js", "manifest.webmanifest"];
+const BROWSER_FILES = ["app.js", "index.html", "styles.css", "mountain.css", "journey.css", "service-worker.js", "manifest.webmanifest"];
 
 function copyIfChanged(source, target) {
   const content = fs.readFileSync(source);

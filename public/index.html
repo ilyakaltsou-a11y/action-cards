@@ -7,43 +7,55 @@
     <title>English by Pictures</title>
     <script>
       if (window.location.protocol === "file:") {
-        window.location.replace(`http://127.0.0.1:5176/${window.location.search || "?v=76"}`);
+        window.location.replace(`http://127.0.0.1:5176/${window.location.search || "?v=77"}`);
       }
     </script>
     <link rel="manifest" href="manifest.webmanifest" />
-    <link rel="stylesheet" href="styles.css?v=76" />
-    <link rel="stylesheet" href="mountain.css?v=76" />
+    <link rel="stylesheet" href="styles.css?v=77" />
+    <link rel="stylesheet" href="mountain.css?v=77" />
+    <link rel="stylesheet" href="journey.css?v=77" />
   </head>
   <body data-screen="home">
     <div class="landscape-backdrop" aria-hidden="true"></div>
     <div class="app-shell">
       <header class="app-header">
+        <details class="language-picker" id="workspaceLanguagePicker">
+          <summary><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#globe"></use></svg><span id="workspaceLanguageLabel">English</span><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#chevron-down"></use></svg></summary>
+          <nav class="language-tabs" aria-label="Выбор языка">
+            <button class="language-tab" id="englishModeButton" type="button" data-language="english">English</button>
+            <button class="language-tab" id="polishModeButton" type="button" data-language="polish">Polski</button>
+          </nav>
+        </details>
         <button class="activity-button" id="activityButton" type="button" aria-label="Открыть активность">
           <span class="activity-flame" id="activityFlame" aria-hidden="true"></span>
           <span class="activity-count" id="activityCount">0</span>
         </button>
-        <div>
-          <p class="eyebrow">Твой путь к языку</p>
-          <h1>English by Pictures</h1>
+        <div class="header-save">
+          <h1 class="sr-only">English by Pictures</h1>
           <p class="save-state" id="saveState" role="status" aria-live="polite">Проверяем сохранение…</p>
         </div>
         <div class="header-actions">
           <button class="install-button" id="installButton" type="button" hidden aria-label="Установить приложение">+</button>
-          <button class="menu-button" id="openSettingsButton" type="button" aria-label="Открыть настройки">☰</button>
+          <button class="menu-button" id="openSettingsButton" type="button" aria-label="Открыть настройки" title="Профиль и настройки"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#user-round"></use></svg></button>
         </div>
       </header>
       <section class="home-screen" id="homeScreen" aria-label="Главная">
-        <div class="home-welcome">
-          <div><p class="section-kicker">С возвращением</p><h2>Продолжим<br />обучение?</h2><p class="home-streak" id="homeStreak"></p></div>
-          <button class="daily-orbit" id="homeGoalButton" type="button" title="Дневная цель"><span id="homeGoalPercent">0%</span><small>цель дня</small></button>
-        </div>
-        <div class="home-actions">
-          <button class="home-action" type="button" data-workspace-route="learn"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#layers"></use></svg><span>Карточки</span><small id="homeCardCount">0 карточек</small></button>
-          <button class="home-action" type="button" data-workspace-route="progress"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#chart-no-axes-column"></use></svg><span>Прогресс</span><small id="homeReviewedCount">0 повторений</small></button>
-          <button class="home-action" id="homeFavoritesButton" type="button"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#bookmark"></use></svg><span>Избранное</span><small id="homeFavoriteCount">0 карточек</small></button>
-          <button class="home-action" id="homeOfflineButton" type="button"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#arrow-down-to-line"></use></svg><span>Офлайн</span><small id="homeOfflineCount">Скачать карточки</small></button>
+        <div class="home-intro"><p class="section-kicker">English by Pictures</p><h2>Что изучим сегодня?</h2></div>
+        <button class="home-goal" id="homeGoalButton" type="button" title="Дневная цель">
+          <span class="home-goal-caption"><span>Сегодня</span><strong id="homeGoalCount">0 из 7 повторений</strong></span>
+          <span class="home-goal-meter" id="homeGoalMeter" role="progressbar" aria-label="Дневная цель" aria-valuemin="0" aria-valuemax="7" aria-valuenow="0"><span></span></span>
+          <span class="home-streak" id="homeStreak"></span>
+        </button>
+        <div class="home-learning-actions">
+          <article class="home-study-entry">
+            <div class="home-study-heading"><img id="homeStudyPreview" src="assets/themes/alpine.jpg" alt="" /><div><h3 id="homeStudyTitle">Учить карточки</h3><p id="homeCardCount">Мои наборы</p></div></div>
+            <div class="home-study-modes" role="group" aria-label="С чего начать карточку"><button type="button" data-start-mode="picture" aria-pressed="true"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#image"></use></svg>По картинке</button><button type="button" data-start-mode="russian" aria-pressed="false"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#type"></use></svg>По тексту</button></div>
+            <button class="main-button home-start" type="button" data-workspace-route="cards">Начать повторение<svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#arrow-right"></use></svg></button>
+          </article>
+          <button class="home-text-entry" type="button" data-workspace-route="texts"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#book-open"></use></svg><span><strong>Текст из моих слов</strong><small>Создать задание</small></span><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#arrow-right"></use></svg></button>
         </div>
         <div class="home-library"><div class="section-heading"><h3>Мои наборы</h3><button type="button" class="icon-button" id="homeDeckButton" title="Все папки" aria-label="Все папки"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#arrow-right"></use></svg></button></div><div class="home-folder-list" id="homeFolders"></div></div>
+        <button class="home-add-words soft-button" id="homeAddWordsButton" type="button"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#plus"></use></svg>Добавить слова</button>
       </section>
       <section class="workspace-screen" id="progressScreen" aria-labelledby="progressTitle" hidden>
         <p class="section-kicker">Шаг за шагом</p><h2 id="progressTitle">Твой прогресс</h2>
@@ -57,13 +69,14 @@
         <label class="search-field"><span class="sr-only">Поиск заметок</span><input id="notesSearch" type="search" placeholder="Найти заметку" /></label>
         <div class="notes-layout"><div id="notesList" class="notes-list"></div><form id="noteEditor" class="note-editor" hidden><input id="noteTitle" aria-label="Название заметки" placeholder="Название" maxlength="120" /><textarea id="noteBody" aria-label="Текст заметки" placeholder="Фразы, примеры, вопросы…" rows="8" maxlength="20000"></textarea><div class="note-editor-actions"><span id="noteSaveState" role="status"></span><button class="soft-button" id="deleteNoteButton" type="button"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#trash-2"></use></svg>Удалить</button></div></form></div><button id="undoNoteButton" class="soft-button" type="button" hidden>Отменить удаление</button>
       </section>
-      <nav class="language-tabs" aria-label="Выбор языка">
-        <button class="language-tab" id="englishModeButton" type="button" data-language="english">English</button>
-        <button class="language-tab" id="polishModeButton" type="button" data-language="polish">Polski</button>
-      </nav>
+      <section class="texts-heading" id="textsHeading" aria-labelledby="textsTitle" hidden>
+        <div class="section-heading"><div><p class="section-kicker" id="textsWordCount"></p><h2 id="textsTitle">Тексты из моих слов</h2></div><button type="button" class="icon-button" id="textsDictionaryButton" aria-label="Открыть словарь" title="Словарь"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#book-open"></use></svg></button></div>
+        <div class="text-view-tabs" role="group" aria-label="Тексты"><button type="button" data-text-view="create" aria-pressed="true">Создать</button><button type="button" data-text-view="library" aria-pressed="false">Мои тексты</button></div>
+      </section>
+      <section class="text-archive" id="textArchive" aria-label="Сохранённые задания" hidden><div id="textArchiveList"></div></section>
 
       <main class="app-grid english-view" id="englishView">
-        <nav class="practice-tabs" aria-label="Способ изучения английского">
+        <nav class="practice-tabs" aria-label="Способ изучения английского" hidden>
           <button type="button" id="englishCardsTab" class="is-active" aria-pressed="true">Карточки</button>
           <button type="button" id="englishSentencesTab" aria-pressed="false">Предложения</button>
         </nav>
@@ -131,10 +144,11 @@
           </div>
           </div>
 
+          <button class="main-button study-reveal-button" id="revealStudyButton" type="button">Показать фразу</button>
           <div class="memory-controls" aria-label="Оценка карточки">
-            <div class="study-rating-choice"><button class="study-rating-button" id="againButton" type="button" aria-label="Трудно" title="Трудно — повторить раньше"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#x"></use></svg></button><span>Трудно</span></div>
+            <div class="study-rating-choice"><button class="study-rating-button" id="againButton" type="button" aria-label="Ещё учу" title="Ещё учу — повторить раньше"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#x"></use></svg></button><span>Ещё учу</span></div>
             <div class="study-rating-choice"><button class="study-rating-button" id="repeatStudyButton" type="button" aria-label="Посмотреть ещё раз" title="Ещё раз без оценки"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#rotate-ccw"></use></svg></button><span>Ещё раз</span></div>
-            <div class="study-rating-choice"><button class="study-rating-button" id="gotItButton" type="button" aria-label="Легко" title="Легко — знаю"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg></button><span>Легко</span></div>
+            <div class="study-rating-choice"><button class="study-rating-button" id="gotItButton" type="button" aria-label="Знаю" title="Знаю"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg></button><span>Знаю</span></div>
           </div>
 
         </section>
@@ -226,7 +240,6 @@
         <section class="polish-panel polish-trainer" id="englishSentencesPractice" aria-label="Тренировка английского" hidden>
           <div class="panel-head">
             <div>
-              <p class="section-kicker">Тренировка</p>
               <h2>Переведи на английский</h2>
             </div>
           </div>
@@ -247,9 +260,9 @@
             <label>
               <span>Режим</span>
               <select id="englishTrainerExerciseMode">
-                <option value="easy">Лёгкий: A1-A2</option>
-                <option value="medium" selected>Средний: A2-B1</option>
-                <option value="hard">Сложный: B1</option>
+                <option value="easy">A1–A2</option>
+                <option value="medium" selected>A2–B1</option>
+                <option value="hard">B1</option>
               </select>
             </label>
           </div>
@@ -271,27 +284,12 @@
           </article>
 
           <article class="polish-feedback" id="englishTrainerFeedback" hidden></article>
-          <div class="status-box" id="englishTrainerStatus" role="status">Выбери слова в словаре или напиши свой текст.</div>
+          <div class="status-box" id="englishTrainerStatus" role="status"></div>
         </section>
       </main>
 
-      <main class="polish-view" id="polishView" hidden>
-        <section class="panel polish-panel polish-hero" aria-label="Польский тренажер">
-          <div>
-            <p class="section-kicker">Polski</p>
-            <h2>Тренажер предложений</h2>
-            <p>Добавь польские слова, создай задание на русском и напиши ответ по-польски. AI проверит формы, падежи и порядок слов.</p>
-          </div>
+      <dialog class="deck-dialog" id="polishWordsDialog"><section class="deck-dialog-panel" aria-label="Добавить польские слова"><div class="dialog-head"><h2>Мои польские слова</h2><button class="icon-button" id="closePolishWordsButton" type="button" aria-label="Закрыть добавление слов"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#x"></use></svg></button></div>
           <span class="status-dot" id="polishAiStatus">DeepSeek</span>
-        </section>
-
-        <section class="panel polish-panel" aria-label="База польских слов">
-          <div class="panel-head">
-            <div>
-              <p class="section-kicker">База слов</p>
-              <h2>Мои польские слова</h2>
-            </div>
-          </div>
           <label class="word-field">
               <span>Добавь слова или фразы</span>
               <textarea id="polishWordsInput" rows="3" autocomplete="off" placeholder="dom - дом"></textarea>
@@ -305,13 +303,13 @@
             <strong id="polishDictionarySummary">0 слов · Открыть</strong>
             <small id="polishDictionaryPreview">Пока пусто</small>
           </button>
-        </section>
-
+      </section></dialog>
+      <main class="polish-view" id="polishView" hidden>
         <section class="panel polish-panel polish-trainer" aria-label="Тренировка польского">
           <div class="panel-head">
             <div>
               <p class="section-kicker">Тренировка</p>
-              <h2>RU → PL</h2>
+            <h2>Переведи на польский</h2>
             </div>
           </div>
           <div class="polish-controls">
@@ -326,9 +324,9 @@
             <label>
               <span>Режим</span>
               <select id="polishExerciseMode">
-                <option value="easy">Лёгкий: почти только мои слова</option>
-                <option value="medium" selected>Средний: новые формы</option>
-                <option value="hard">Сложный: падежи и времена</option>
+                <option value="easy">A1–A2</option>
+                <option value="medium" selected>A2</option>
+                <option value="hard">B1</option>
               </select>
             </label>
           </div>
@@ -350,7 +348,7 @@
           </article>
 
           <article class="polish-feedback" id="polishFeedback" hidden></article>
-          <div class="status-box" id="polishStatus" role="status">Добавь слова или попроси AI предложить базовые.</div>
+          <div class="status-box" id="polishStatus" role="status"></div>
         </section>
       </main>
     </div>
@@ -536,7 +534,13 @@
           <button class="soft-button" id="restoreBackupButton" type="button" disabled>Восстановить</button>
           <p id="backupStatus" role="status" aria-live="polite"></p>
         </section>
-        <section class="appearance-settings" aria-label="Оформление и загрузки"><button type="button" class="soft-button" id="openThemesButton"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#layers"></use></svg>Тема оформления</button><button type="button" class="soft-button" id="settingsOfflineButton"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#arrow-down-to-line"></use></svg>Офлайн-доступ</button></section>
+        <section class="profile-shortcuts" aria-label="Библиотека и активность">
+          <button class="soft-button" type="button" data-workspace-route="progress"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#chart-no-axes-column"></use></svg><span>Активность<small id="homeReviewedCount"></small></span></button>
+          <button class="soft-button" id="homeFavoritesButton" type="button"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#bookmark"></use></svg><span>Избранное<small id="homeFavoriteCount"></small></span></button>
+          <button class="soft-button" type="button" data-workspace-route="notes"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#notebook-pen"></use></svg><span>Notes</span></button>
+          <button class="soft-button" id="homeOfflineButton" type="button"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#arrow-down-to-line"></use></svg><span>Офлайн<small id="homeOfflineCount"></small></span></button>
+        </section>
+        <section class="appearance-settings" aria-label="Оформление"><button type="button" class="soft-button" id="openThemesButton"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#layers"></use></svg>Тема оформления</button></section>
       </section>
     </dialog>
 
@@ -553,10 +557,11 @@
           <div class="activity-main">
             <span class="activity-flame activity-flame-large" id="activityDialogFlame" aria-hidden="true"></span>
             <div>
-              <p class="activity-summary" id="activitySummary">0/7 карточек</p>
+              <p class="activity-summary" id="activitySummary">0 из 7 повторений</p>
               <p class="activity-progress-text" id="activityProgressText">Средний уровень</p>
             </div>
           </div>
+          <p class="activity-rule">Повторение — это оценка карточки: «Ещё учу», «Знаю» или свайп. Переворот и просмотр без оценки не считаются.</p>
           <div class="activity-meter" aria-hidden="true">
             <span id="activityProgressFill"></span>
           </div>
@@ -697,22 +702,22 @@
         </div>
       </section>
     </dialog>
-    <script src="modules/practice-selection.js?v=76"></script>
-    <script src="modules/card-import.js?v=76"></script>
-    <script src="modules/activity.js?v=76"></script>
-    <script src="modules/swipe.js?v=76"></script>
+    <script src="modules/practice-selection.js?v=77"></script>
+    <script src="modules/card-import.js?v=77"></script>
+    <script src="modules/activity.js?v=77"></script>
+    <script src="modules/swipe.js?v=77"></script>
     <dialog class="deck-dialog" id="offlineDialog"><section class="deck-dialog-panel" aria-label="Офлайн-доступ"><div class="dialog-head"><div><p class="section-kicker">Всегда с собой</p><h2>Офлайн-доступ</h2></div><button type="button" class="icon-button" id="closeOfflineButton" aria-label="Закрыть офлайн-доступ">×</button></div><div id="offlineFolders" class="offline-folders"></div><div class="profile-actions"><button type="button" class="primary-button" id="downloadOfflineButton"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#arrow-down-to-line"></use></svg>Скачать</button><button type="button" class="soft-button" id="clearOfflineButton">Удалить загрузки</button></div><button type="button" class="soft-button" id="studyOfflineButton">Учить загруженные карточки</button><p id="offlineStatus" role="status" aria-live="polite"></p></section></dialog>
     <dialog class="deck-dialog" id="themesDialog"><section class="deck-dialog-panel" aria-label="Тема оформления"><div class="dialog-head"><h2>Тема оформления</h2><button type="button" class="icon-button" id="closeThemesButton" aria-label="Закрыть темы">×</button></div><div class="theme-grid" id="themeGrid" role="group" aria-label="Выбор пейзажа"></div></section></dialog>
     <dialog class="deck-dialog" id="noteWordsDialog"><section class="deck-dialog-panel note-words-panel" aria-label="Задание из слов"><div class="dialog-head"><h2>Задание из слов</h2><button type="button" class="icon-button" id="closeNoteWordsButton" aria-label="Закрыть выбор слов">×</button></div><label class="word-field"><span>Язык</span><select id="noteWordsLanguage"><option value="english">English</option><option value="polish">Polski</option></select></label><label class="word-field"><span>Поиск слов</span><input id="noteWordsSearch" type="search" /></label><div class="note-word-choices" id="noteWordChoices"></div><p id="noteWordsCount" role="status"></p><p id="noteWordsStatus" role="status" aria-live="polite"></p><button type="button" class="main-button" id="createNoteExerciseButton">Создать задание</button></section></dialog>
     <nav class="main-dock" aria-label="Основная навигация">
       <button type="button" data-workspace-route="home" aria-label="Главная" title="Главная"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#house"></use></svg><span>Главная</span></button>
-      <button type="button" data-workspace-route="learn" aria-label="Учиться" title="Учиться"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#layers"></use></svg><span>Учиться</span></button>
-      <button type="button" data-workspace-route="progress" aria-label="Прогресс" title="Прогресс"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#chart-no-axes-column"></use></svg><span>Прогресс</span></button>
-      <button type="button" data-workspace-route="notes" aria-label="Notes" title="Notes"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#notebook-pen"></use></svg><span>Notes</span></button>
+      <button type="button" data-workspace-route="cards" aria-label="Карточки" title="Карточки"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#layers"></use></svg><span>Карточки</span></button>
+      <button type="button" data-workspace-route="texts" aria-label="Тексты" title="Тексты"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#book-open"></use></svg><span>Тексты</span></button>
     </nav>
-    <script src="modules/profile-backup.js?v=76"></script>
-    <script src="modules/workspace.js?v=76"></script>
-    <script src="modules/study-session.js?v=76"></script>
-    <script src="app.js?v=76"></script>
+    <script src="modules/profile-backup.js?v=77"></script>
+    <script src="modules/workspace.js?v=77"></script>
+    <script src="modules/study-session.js?v=77"></script>
+    <script src="modules/text-library.js?v=77"></script>
+    <script src="app.js?v=77"></script>
   </body>
 </html>
