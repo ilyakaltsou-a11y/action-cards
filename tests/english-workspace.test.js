@@ -715,6 +715,95 @@ test("question starter examples do not duplicate matching personal cards", async
   assert.equal(app.state.cards.filter((card) => card.id.startsWith("basic-question-")).length, 11);
 });
 
+test("39 pronunciation pairs upgrade once, show standard English first in either mode and reveal translation separately", async () => {
+  const app = await launch(); const doc = app.document;
+  const pairs = app.state.cards.filter((card) => card.id.startsWith("spoken-english-"));
+  assert.equal(pairs.length, 39);
+  assert.ok(app.state.starterPacks.includes("spoken-english-v1"));
+  for (const card of pairs) {
+    assert.ok(card.standardPhrase && card.phrase && card.translation);
+    assert.equal(card.textOnly, true); assert.equal(card.imageUrl, "");
+  }
+  const card = pairs[0];
+  app.state.studySettings.selection = { folderPaths: ["all"], cardIds: [card.id] };
+  app.api.mountainWorkspace.route("cards"); app.api.renderStudy(0);
+  assert.equal(doc.getElementById("cardRussianPrompt").textContent, "What are you going to do?");
+  assert.equal(doc.getElementById("cardRussianPrompt").lang, "en");
+  assert.equal(doc.getElementById("cardImage").hidden, true);
+  assert.equal(doc.getElementById("revealStudyButton").textContent, "Разговорный вариант");
+  doc.getElementById("revealStudyButton").click();
+  assert.equal(doc.getElementById("cardPhrase").textContent, "Whatcha gonna do?");
+  assert.equal(doc.getElementById("cardAnswerImage").hidden, true);
+  assert.equal(doc.getElementById("cardTranslation").hidden, false);
+  assert.equal(doc.getElementById("cardTranslation").classList.contains("is-hidden"), true);
+  doc.getElementById("revealStudyButton").click();
+  assert.equal(doc.getElementById("cardTranslation").classList.contains("is-hidden"), false);
+  assert.equal(doc.querySelector("#cardTranslation .translation-text").textContent, card.translation);
+  doc.getElementById("revealStudyButton").click();
+  assert.equal(app.state.flipped, false);
+  assert.equal(doc.getElementById("cardTranslation").classList.contains("is-hidden"), true);
+  app.state.studySettings.mode = "russian"; app.api.renderStudy();
+  assert.equal(doc.getElementById("cardRussianPrompt").textContent, card.standardPhrase);
+  doc.getElementById("againButton").click(); await app.flush();
+  const saved = app.getSaved().cards.find((entry) => entry.id === card.id);
+  assert.equal(saved.standardPhrase, card.standardPhrase);
+  assert.equal(saved.review.remaining, 4);
+  const next = await launch({ saved: app.getSaved(), initialStorage: [...app.storage] });
+  assert.equal(next.state.cards.filter((entry) => entry.standardPhrase).length, 39);
+  assert.equal(next.state.cards.find((entry) => entry.id === card.id).review.memory.reps, 1);
+  assert.equal(next.api.profileSnapshot().data.cards.find((entry) => entry.id === card.id).standardPhrase, card.standardPhrase);
+  next.state.cards = next.state.cards.filter((entry) => entry.id !== card.id);
+  next.api.saveCards(); await next.flush();
+  const deleted = await launch({ saved: next.getSaved(), initialStorage: [...next.storage] });
+  assert.equal(deleted.state.cards.filter((entry) => entry.standardPhrase).length, 38);
+});
+
+test("finishing today's five new cards pauses instead of flooding with the other starters, and resumes next day", async () => {
+  const app = await launch(); const doc = app.document;
+  app.api.mountainWorkspace.route("cards");
+  const seen = new Set();
+  for (let index = 0; index < 10; index += 1) {
+    seen.add(app.api.currentCard().id); doc.getElementById("gotItButton").click();
+  }
+  assert.equal(seen.size, 5); assert.equal(app.api.currentCard(), null);
+  assert.equal(doc.getElementById("studyPause").hidden, false);
+  assert.equal(doc.getElementById("flashcard").hidden, true);
+  assert.equal(doc.querySelector(".memory-controls").hidden, true);
+  for (const id of ["againButton", "repeatStudyButton", "gotItButton", "revealStudyButton"]) assert.equal(doc.getElementById(id).disabled, true);
+  const attempts = app.state.cards.reduce((total, card) => total + card.attempts, 0);
+  app.api.renderStudy();
+  assert.equal(app.state.cards.reduce((total, card) => total + card.attempts, 0), attempts);
+  app.advanceTime(86400000);
+  doc.dispatchEvent(new app.window.Event("visibilitychange"));
+  assert.ok(app.api.currentCard());
+  assert.equal(doc.getElementById("studyPause").hidden, true);
+  assert.equal(doc.getElementById("flashcard").hidden, false);
+  assert.equal(doc.querySelector(".memory-controls").hidden, false);
+});
+
+test("a newer forgotten answer wins over an older long due date during sync", async () => {
+  const app = await launch(); const card = app.api.currentCard();
+  app.document.getElementById("againButton").click(); await app.flush();
+  const current = app.getSaved();
+  const old = structuredClone(current); const stale = old.cards.find((entry) => entry.id === card.id);
+  stale.nextReviewAt += 365 * 86400000; stale.updatedAt -= 1000; stale.lastReviewedAt -= 1000; stale.correct += 1;
+  const reloaded = await launch({ saved: old, initialStorage: [...app.storage] });
+  const restored = reloaded.state.cards.find((entry) => entry.id === card.id);
+  assert.equal(restored.nextReviewAt, card.nextReviewAt);
+  assert.equal(restored.correct, card.correct);
+});
+
+test("opening a library item beyond the active batch never opens another card by its old array index", async () => {
+  const app = await launch(); const doc = app.document;
+  doc.getElementById("openDeckButton").click();
+  const cards = app.state.cards.filter((card) => card.id.startsWith("spoken-english-"));
+  const target = cards.at(-1);
+  const row = [...doc.querySelectorAll("#deckList .deck-item")].find((item) => item.querySelector("h3").textContent === target.phrase);
+  assert.ok(row); row.click();
+  assert.equal(app.api.currentCard().id, target.id);
+  assert.equal(doc.getElementById("cardRussianPrompt").textContent, target.standardPhrase);
+});
+
 test("focused study preserves reveal order, repeat is ungraded and rating buttons use existing review logic", async () => {
   const app = await launch();
   const doc = app.document;
@@ -1146,13 +1235,15 @@ test("first mouse drag captures the card, shows green feedback and rates exactly
   assert.equal(element.hasPointerCapture(1), false);
   assert.equal(card.attempts, attempts + 1);
   assert.equal(card.correct, correct + 1);
-  assert.equal(app.state.cards.at(-1).id, card.id);
+  assert.notEqual(app.api.currentCard().id, card.id);
+  assert.equal(card.review.remaining, 4);
+  assert.ok(card.nextReviewAt > card.lastReviewedAt);
   element.click();
   assert.equal(app.state.flipped, false);
   assert.equal(element.style.transform, "");
 });
 
-test("touch swipe shows red feedback and moves an unknown card nearer the top", async () => {
+test("touch swipe shows red feedback and schedules an unknown card after four other ratings", async () => {
   const app = await launch();
   const card = app.api.currentCard();
   const attempts = card.attempts;
@@ -1163,8 +1254,12 @@ test("touch swipe shows red feedback and moves an unknown card nearer the top", 
   touch(app, "touchend", 80, 110);
   assert.equal(card.attempts, attempts + 1);
   assert.equal(card.correct, correct);
-  const position = app.state.cards.findIndex((item) => item.id === card.id);
-  assert.ok(position > 0 && position < app.state.cards.length / 2);
+  assert.equal(card.review.remaining, 4);
+  for (let index = 0; index < 4; index += 1) {
+    assert.notEqual(app.api.currentCard().id, card.id);
+    app.document.getElementById("againButton").click();
+  }
+  assert.equal(app.api.currentCard().id, card.id);
 });
 
 test("vertical touch motion leaves native page scrolling available without rating or flipping", async () => {

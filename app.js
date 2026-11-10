@@ -7,7 +7,7 @@ const LANGUAGE_KEY = "action-cards:language:v1";
 const POLISH_KEY = "action-cards:polish:v1";
 const ENGLISH_TRAINER_KEY = "action-cards:english-trainer:v1";
 const STUDY_SETTINGS_KEY = "action-cards:study-settings:v1";
-const DEFAULT_CARDS_URL = "default-cards.json?v=78";
+const DEFAULT_CARDS_URL = "default-cards.json?v=79";
 const STARTER_PACKS_KEY = "action-cards:starter-packs:v1";
 const BASIC_ACTIONS_PACK = "basic-actions-v1";
 const BASIC_ACTIONS_FOLDER = "Стартовые / Действия с предметами";
@@ -16,6 +16,7 @@ const STARTER_PACKS = [
   { id: "basic-questions-v1", prefix: "basic-question-" },
   { id: "basic-cup-actions-v1", prefix: "cup-action-" },
   { id: "kitchen-dialogues-v1", prefix: "kitchen-dialogue-" },
+  { id: "spoken-english-v1", prefix: "spoken-english-" },
 ];
 const BASIC_ACTION_MOTIONS = new Map([
   ["Pick up the phone.", "arrow-up"],
@@ -40,7 +41,6 @@ const BASIC_ACTION_MOTIONS = new Map([
   ["Leave the keys there.", "pause"],
 ].map(([phrase, icon]) => [songPhraseKey(phrase), icon]));
 const SONG_ROOT_FOLDER = "Только песни";
-const AGAIN_REVIEW_DELAY = 45 * 1000;
 const CREATE_CARD_TIMEOUT = 140 * 1000;
 const SONG_CARD_TIMEOUT = 480 * 1000;
 const POLISH_AI_TIMEOUT = 120 * 1000;
@@ -51,16 +51,6 @@ const TOPICS = [
   { id: "work", label: "Работа и учеба" },
   { id: "travel", label: "Дорога" },
   { id: "general", label: "Общее" },
-];
-const REVIEW_INTERVALS = [
-  30 * 1000,
-  5 * 60 * 1000,
-  30 * 60 * 1000,
-  12 * 60 * 60 * 1000,
-  2 * 24 * 60 * 60 * 1000,
-  5 * 24 * 60 * 60 * 1000,
-  14 * 24 * 60 * 60 * 1000,
-  30 * 24 * 60 * 60 * 1000,
 ];
 
 const state = {
@@ -332,9 +322,10 @@ const swipes = globalThis.ActionCardsSwipe.createSwipeController({
   element: els.flashcard, eventTarget: window,
   hasCard: () => Boolean(currentCard()), onRate: rateCard,
 });
+const reviewQueue = globalThis.ActionCardsReview.create({ getAllCards: () => state.cards, getProfile: () => state.profileId, now: () => Date.now() });
 studySession = globalThis.ActionCardsStudySession.create({
   document, eventTarget: window, getCard: currentCard,
-  getRevealState: () => ({ flipped: state.flipped, russian: state.studySettings.mode === "russian" || Boolean(currentCard()?.textOnly), translationVisible: !els.cardTranslation.classList.contains("is-hidden") }),
+  getRevealState: () => ({ flipped: state.flipped, pronunciation: Boolean(currentCard()?.standardPhrase), russian: !currentCard()?.standardPhrase && (state.studySettings.mode === "russian" || Boolean(currentCard()?.textOnly)), translationVisible: !els.cardTranslation.classList.contains("is-hidden") }),
   onClose: () => { swipes.cancel(); mountainWorkspace.route("home"); },
   onRepeat: () => renderStudy(),
   onReveal: () => {
@@ -645,6 +636,7 @@ function initProfile() {
 }
 
 function loadLocalCards() {
+  reviewQueue.reset();
   state.localSaveFailed = false;
   state.studySettings = normalizeStudySettings();
   const snapshot = globalThis.ProfileBackup.read(localStorage, state.profileId)?.data;
@@ -681,6 +673,7 @@ async function loadServerCards() {
   const data = await response.json();
   if (state.profileId !== profile) return;
   if (Array.isArray(data.cards)) {
+    reviewQueue.reset();
     const localCards = [...state.cards];
     const serverCards = data.cards.map(hydrateCard);
     const serverStudySettings = normalizeStudySettings(data.studySettings);
@@ -1145,6 +1138,7 @@ function hydrateCard(card) {
     id: card.id || crypto.randomUUID(),
     word: card.word || "",
     phrase: card.phrase || card.answer || "",
+    standardPhrase: typeof card.standardPhrase === "string" ? card.standardPhrase : "",
     translation: card.translation || "",
     patternTranslation: card.patternTranslation || "",
     textOnly: card.textOnly === true,
@@ -1160,13 +1154,14 @@ function hydrateCard(card) {
     level: Number.isFinite(card.level) ? card.level : 0,
     nextReviewAt: Number.isFinite(card.nextReviewAt) ? card.nextReviewAt : 0,
     lastReviewedAt: Number.isFinite(card.lastReviewedAt) ? card.lastReviewedAt : 0,
+    review: globalThis.ActionCardsReview.normalize(card.review),
     createdAt: Number.isFinite(card.createdAt) ? card.createdAt : Date.now(),
     updatedAt: Number.isFinite(card.updatedAt) ? card.updatedAt : 0,
   };
 }
 
 function cardFreshness(card) {
-  return Math.max(card?.updatedAt || 0, card?.lastReviewedAt || 0, card?.nextReviewAt || 0, card?.createdAt || 0);
+  return Math.max(card?.updatedAt || 0, card?.lastReviewedAt || 0, card?.createdAt || 0);
 }
 
 function mergeCards(serverCards, localCards) {
@@ -1192,6 +1187,7 @@ function cardSyncSignature(card) {
     savedCard.id,
     savedCard.word,
     savedCard.phrase,
+    savedCard.standardPhrase,
     savedCard.translation,
     savedCard.patternTranslation,
     savedCard.textOnly,
@@ -1207,6 +1203,7 @@ function cardSyncSignature(card) {
     savedCard.level,
     savedCard.nextReviewAt,
     savedCard.lastReviewedAt,
+    JSON.stringify(savedCard.review),
     savedCard.createdAt,
     savedCard.updatedAt,
   ].join("\u001f");
@@ -1237,6 +1234,10 @@ function createCard(draft) {
 }
 
 function getStudyDeck() {
+  return reviewQueue.deck(getStudyPool());
+}
+
+function getStudyPool() {
   return state.studySettings.selection
     ? practiceSelection.filter(state.cards, state.studySettings.selection, folderDescendantMatches)
     : getFolderDeck();
@@ -1405,15 +1406,23 @@ function renderStudy(index = state.currentIndex) {
   swipes.cancel();
   if (state.activeFolder !== "all" && !getFolderTreePaths().includes(state.activeFolder)) state.activeFolder = "all";
   const deck = getStudyDeck();
+  const pool = getStudyPool();
   const selection = state.studySettings.selection;
   els.studyFolderLabel.textContent = selection
-    ? `${selection.folderPaths.map(folderLabel).join(", ") || "Нет папок"}${selection.cardIds === null ? "" : ` · Карточек: ${deck.length}`}`
+    ? `${selection.folderPaths.map(folderLabel).join(", ") || "Нет папок"}${selection.cardIds === null ? "" : ` · Карточек: ${pool.length}`}`
     : folderLabel(state.activeFolder);
 
+  const paused = !deck.length && Boolean(pool.length);
+  document.getElementById("studyPause").hidden = !paused;
+  els.englishCardsPractice.classList.toggle("is-study-paused", paused);
+  document.getElementById("revealStudyButton").hidden = paused;
+  document.querySelector(".memory-controls").hidden = paused;
+  els.flashcard.hidden = !deck.length && Boolean(pool.length);
+  document.getElementById("studyPauseMessage").textContent = pool.length && !deck.length ? reviewQueue.pause(pool) : "";
   if (!deck.length) {
     state.currentIndex = 0;
     state.flipped = false;
-    els.studyTitle.textContent = state.cards.length ? "В этой папке пока пусто" : "Пока нет карточек";
+    els.studyTitle.textContent = pool.length ? (pool.some((card) => card.review?.remaining > 0) ? "Небольшая пауза" : "На сегодня всё") : state.cards.length ? "В этой папке пока пусто" : "Пока нет карточек";
     els.reviewStatus.textContent = state.cards.length ? folderLabel(state.activeFolder) : "0 карточек";
     els.flashcard.classList.remove("is-flipped");
     els.flashcard.style.transform = "";
@@ -1457,9 +1466,10 @@ function setStudyMode(mode) {
 
 function renderStudyMode() {
   const card = currentCard();
-  const russian = state.studySettings.mode === "russian" || Boolean(card?.textOnly);
+  const pronunciation = Boolean(card?.standardPhrase);
+  const russian = !pronunciation && (state.studySettings.mode === "russian" || Boolean(card?.textOnly));
   const showCaption = !russian && Boolean(state.studySettings.showPictureTranslation && card?.imageUrl && card.translation?.trim());
-  els.pictureTranslationSetting.hidden = russian;
+  els.pictureTranslationSetting.hidden = russian || pronunciation;
   els.showPictureTranslation.checked = Boolean(state.studySettings.showPictureTranslation);
   els.showPictureTranslation.disabled = !card;
   els.cardPictureTranslation.hidden = !showCaption;
@@ -1468,20 +1478,22 @@ function renderStudyMode() {
   els.flashcard.classList.toggle("is-dialogue", Boolean(card?.phrase.includes("\n")));
   els.studyModeButtons.forEach((button) => {
     button.setAttribute("aria-pressed", String(button.dataset.studyMode === (russian ? "russian" : "picture")));
-    button.disabled = Boolean(card?.textOnly) && button.dataset.studyMode === "picture";
+    button.disabled = pronunciation || Boolean(card?.textOnly) && button.dataset.studyMode === "picture";
   });
   els.flashcard.classList.toggle("is-russian-mode", russian);
   els.flashcard.classList.toggle("is-text-only", Boolean(card?.textOnly));
-  els.cardImage.hidden = russian;
-  els.cardRussianPrompt.hidden = !russian;
+  els.flashcard.classList.toggle("is-pronunciation", pronunciation);
+  els.cardImage.hidden = russian || pronunciation;
+  els.cardRussianPrompt.hidden = !russian && !pronunciation;
+  els.cardRussianPrompt.lang = pronunciation ? "en" : "ru";
   els.cardRussianPrompt.textContent = card
-    ? studyText(card.translation) || "У этой карточки пока нет русского перевода."
+    ? studyText(pronunciation ? card.standardPhrase : card.translation) || "У этой карточки пока нет русского перевода."
     : "Добавь карточку для тренировки.";
   els.cardPattern.hidden = !card?.patternTranslation;
   els.cardPattern.textContent = card?.patternTranslation ? `${card.word} — ${card.patternTranslation}` : "";
   setStudyVisual(els.cardAnswerImage, card?.imageUrl);
   els.cardTranslation.hidden = russian;
-  if (russian) els.cardMotion.hidden = true;
+  if (russian || pronunciation) els.cardMotion.hidden = true;
   updateCardFaceAccessibility();
 }
 
@@ -1492,7 +1504,7 @@ function updateCardFaceAccessibility() {
   els.cardBack.setAttribute("aria-hidden", String(!state.flipped));
   els.cardFront.toggleAttribute("inert", state.flipped);
   els.cardBack.toggleAttribute("inert", !state.flipped);
-  els.flashcard.setAttribute("aria-label", state.flipped
+  els.flashcard.setAttribute("aria-label", card?.standardPhrase ? (state.flipped ? "Показать полную фразу" : "Показать разговорный вариант") : state.flipped
     ? (state.studySettings.mode === "russian" || currentCard()?.textOnly ? "Показать русский текст" : "Показать картинку")
     : "Показать фразу на английском");
   studySession?.render();
@@ -1516,7 +1528,7 @@ function renderDeck() {
     return;
   }
 
-  deck.forEach((card, index) => {
+  deck.forEach((card) => {
     const item = els.deckItemTemplate.content.firstElementChild.cloneNode(true);
     item.classList.toggle("is-text-only", card.textOnly);
     setVisual(item.querySelector(".deck-thumb"), card.imageUrl, "");
@@ -1535,8 +1547,9 @@ function renderDeck() {
         return;
       }
       useStudyFolder(state.activeFolder);
+      state.studySettings.selection.cardIds = [card.id];
       saveCards();
-      renderStudy(index);
+      renderStudy(0);
       closeDeckDialog();
     });
     item.querySelector(".edit-card-button").addEventListener("click", (event) => {
@@ -1795,53 +1808,11 @@ function rateCard(known) {
   const card = currentCard();
   if (!card) return;
 
-  const previousIndex = state.currentIndex;
-  const now = Date.now();
-  card.attempts += 1;
-  card.lastReviewedAt = now;
-  if (known) {
-    card.correct += 1;
-    card.level = Math.min(card.level + 1, REVIEW_INTERVALS.length - 1);
-    card.nextReviewAt = now + REVIEW_INTERVALS[card.level];
-  } else {
-    card.level = Math.max(0, card.level - 2);
-    card.nextReviewAt = now + AGAIN_REVIEW_DELAY;
-  }
+  reviewQueue.rate(card, known);
   const activityMessage = recordStudyActivity();
-  moveRatedCard(card, known);
   saveCards();
-  renderStudy(Math.min(previousIndex, Math.max(0, getStudyDeck().length - 1)));
+  renderStudy(0);
   if (activityMessage) setStatus(activityMessage, "ok");
-}
-
-function moveRatedCard(card, known) {
-  const originalIndex = state.cards.findIndex((savedCard) => savedCard.id === card.id);
-  if (originalIndex < 0) return;
-
-  state.cards.splice(originalIndex, 1);
-  const visibleCards = getStudyDeck();
-
-  if (known) {
-    if (!visibleCards.length) {
-      state.cards.push(card);
-      return;
-    }
-
-    const lastVisible = visibleCards[visibleCards.length - 1];
-    const lastIndex = state.cards.findIndex((savedCard) => savedCard.id === lastVisible.id);
-    state.cards.splice(lastIndex + 1, 0, card);
-    return;
-  }
-
-  if (!visibleCards.length) {
-    state.cards.unshift(card);
-    return;
-  }
-
-  const targetVisibleIndex = Math.min(visibleCards.length - 1, Math.max(1, Math.floor(visibleCards.length * 0.25)));
-  const targetCard = visibleCards[targetVisibleIndex] || visibleCards[0];
-  const targetIndex = state.cards.findIndex((savedCard) => savedCard.id === targetCard.id);
-  state.cards.splice(Math.max(0, targetIndex), 0, card);
 }
 
 async function updateAiStatus() {
@@ -4100,6 +4071,7 @@ els.settingsDialog.addEventListener("click", (event) => {
 });
 els.openDeckButton.addEventListener("click", openDeckDialog);
 els.openStudyFoldersButton.addEventListener("click", () => openPracticeSelection("cards"));
+document.getElementById("studyChooseFolderButton").addEventListener("click", () => openPracticeSelection("cards"));
 els.openTrainerCardSelectionButton.addEventListener("click", () => openPracticeSelection("sentences"));
 document.querySelector("#closePracticeSelectionButton").addEventListener("click", () => closeAppDialog(els.practiceSelectionDialog));
 els.practiceSelectionDialog.addEventListener("click", (event) => {
@@ -4270,7 +4242,7 @@ async function createNotesWordExercise(language, words, isCurrent = () => true) 
 mountainWorkspace = globalThis.MountainWorkspace.create({
   document, storage: localStorage, getProfile: () => state.profileId, getData: () => state.workspace,
   getCards: () => state.cards, getFolders: getAllFolders, cardFolder, currentCard,
-  getStudyCards: getStudyDeck, getStudyMode: () => state.studySettings.mode, onStudyMode: setStudyMode,
+  getStudyCards: getStudyPool, getStudyMode: () => state.studySettings.mode, onStudyMode: setStudyMode,
   getDestination: () => state.language === "english" && state.englishPractice === "cards" ? "cards" : "texts",
   onDestination: (destination) => {
     if (destination === "cards") { setLanguage("english", { prefetch: false }); setEnglishPractice("cards"); renderStudy(); }
@@ -4311,3 +4283,8 @@ updatePhraseMode();
 updateSongLyricsLinks();
 setInterval(updateAiStatus, 10000);
 setInterval(retryProfileSync, 30000);
+function refreshWaitingReviews() {
+  if (!document.hidden && document.body.dataset.section === "cards" && !document.getElementById("studyPause").hidden) renderStudy(0);
+}
+setInterval(refreshWaitingReviews, 15000);
+document.addEventListener("visibilitychange", refreshWaitingReviews);

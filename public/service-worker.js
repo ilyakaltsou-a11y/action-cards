@@ -1,4 +1,4 @@
-const CACHE_NAME = "action-cards:v78";
+const CACHE_NAME = "action-cards:v79";
 const ASSETS = [
   "./",
   "./index.html",
@@ -13,6 +13,8 @@ const ASSETS = [
   "./modules/workspace.js",
   "./modules/study-session.js",
   "./modules/text-library.js",
+  "./modules/vendor/ts-fsrs.js",
+  "./modules/review-queue.js",
   "./journey.css",
   "./assets/themes/alpine.jpg",
   "./assets/themes/snow.jpg",

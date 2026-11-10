@@ -19,5 +19,8 @@
   },
   "devDependencies": {
     "linkedom": "0.18.13"
+  },
+  "dependencies": {
+    "ts-fsrs": "5.4.2"
   }
 }

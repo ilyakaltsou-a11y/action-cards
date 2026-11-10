@@ -1,5 +1,6 @@
 const fs = require("node:fs");
 const path = require("node:path");
+const { vendorFsrs } = require("./vendor-fsrs.js");
 
 const BROWSER_FILES = ["app.js", "index.html", "styles.css", "mountain.css", "journey.css", "service-worker.js", "manifest.webmanifest"];
 
@@ -24,6 +25,7 @@ function copyModules(source, target) {
 }
 
 function syncBrowserCopies(root = path.resolve(__dirname, "..")) {
+  vendorFsrs(root);
   const publicDir = path.join(root, "public");
   for (const file of BROWSER_FILES) copyIfChanged(path.join(publicDir, file), path.join(root, file));
   const modules = path.join(publicDir, "modules");

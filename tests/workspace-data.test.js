@@ -38,5 +38,5 @@ test("upgrading the shell keeps per-profile downloaded image caches", async () =
     caches: { keys: async () => ["action-cards:v72", "action-cards:v73", "action-cards:v73-mountain", "action-cards:v74", "action-cards:v75", "action-cards:v76", "action-cards:v77", "action-cards:v78", "action-cards:offline:v1:private-profile", "other-app"], delete: async (key) => deleted.push(key) },
   });
   let work; handlers.get("activate")({ waitUntil: (promise) => { work = promise; } }); await work;
-  assert.deepEqual(deleted, ["action-cards:v72", "action-cards:v73", "action-cards:v73-mountain", "action-cards:v74", "action-cards:v75", "action-cards:v76", "action-cards:v77"]);
+  assert.deepEqual(deleted, ["action-cards:v72", "action-cards:v73", "action-cards:v73-mountain", "action-cards:v74", "action-cards:v75", "action-cards:v76", "action-cards:v77", "action-cards:v78"]);
 });
