@@ -7,7 +7,7 @@ const LANGUAGE_KEY = "action-cards:language:v1";
 const POLISH_KEY = "action-cards:polish:v1";
 const ENGLISH_TRAINER_KEY = "action-cards:english-trainer:v1";
 const STUDY_SETTINGS_KEY = "action-cards:study-settings:v1";
-const DEFAULT_CARDS_URL = "default-cards.json?v=79";
+const DEFAULT_CARDS_URL = "default-cards.json?v=80";
 const STARTER_PACKS_KEY = "action-cards:starter-packs:v1";
 const BASIC_ACTIONS_PACK = "basic-actions-v1";
 const BASIC_ACTIONS_FOLDER = "Стартовые / Действия с предметами";
@@ -302,6 +302,7 @@ const practiceSelector = practiceSelection.create({
   folders: document.querySelector("#practiceFolderChoices"),
   list: document.querySelector("#practiceCardChoices"),
   search: document.querySelector("#practiceCardSearch"),
+  folderSearch: document.querySelector("#practiceFolderSearch"),
   summary: document.querySelector("#practiceSelectionCount"),
   apply: document.querySelector("#applyPracticeSelectionButton"),
   all: document.querySelector("#selectAllPracticeCardsButton"),
@@ -1255,6 +1256,9 @@ function openPracticeSelection(target = "cards") {
   practiceSelectionTarget = target;
   const selection = target === "sentences" ? state.englishTrainer
     : state.studySettings.selection || { folderPaths: [state.activeFolder] };
+  document.getElementById("practiceSelectionTitle").textContent = target === "cards" ? "Выбрать наборы" : "Наборы для предложений";
+  document.getElementById("applyPracticeSelectionButton").textContent = target === "cards" ? "Учить выбранное" : "Использовать выбранное";
+  document.getElementById("practiceCardsStep").toggleAttribute("open", target === "sentences");
   practiceSelector.open(selection);
 }
 
@@ -1265,10 +1269,13 @@ function applyPracticeSelection(selection) {
     setEnglishTrainerStatus("Выбор карточек сохранён.", "ok");
   } else {
     state.studySettings = { ...state.studySettings, selection, updatedAt: Math.max(Date.now(), state.studySettings.updatedAt + 1) };
+    setLanguage("english", { prefetch: false });
+    setEnglishPractice("cards");
     renderStudy(0);
   }
   saveCards();
   closeAppDialog(els.practiceSelectionDialog);
+  if (practiceSelectionTarget === "cards") mountainWorkspace.route("cards");
 }
 
 function currentCard() {
@@ -4243,6 +4250,7 @@ mountainWorkspace = globalThis.MountainWorkspace.create({
   document, storage: localStorage, getProfile: () => state.profileId, getData: () => state.workspace,
   getCards: () => state.cards, getFolders: getAllFolders, cardFolder, currentCard,
   getStudyCards: getStudyPool, getStudyMode: () => state.studySettings.mode, onStudyMode: setStudyMode,
+  openStudySelection: () => openPracticeSelection("cards"),
   getDestination: () => state.language === "english" && state.englishPractice === "cards" ? "cards" : "texts",
   onDestination: (destination) => {
     if (destination === "cards") { setLanguage("english", { prefetch: false }); setEnglishPractice("cards"); renderStudy(); }

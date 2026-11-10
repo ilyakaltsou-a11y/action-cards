@@ -27,6 +27,15 @@ test("50 unknown cards stay in a batch of five and return after four other ratin
   assert.equal(f.cards[0].correct, 0);
 });
 
+test("new intake mixes selected folders without expanding the five-card learning batch", () => {
+  const f = fixture();
+  f.cards.forEach((card, index) => { card.folderPath = index < 25 ? "Actions" : "Pronunciation"; });
+  const seen = [];
+  for (let index = 0; index < 10; index += 1) { const card = f.queue.deck(f.cards)[0]; seen.push(card.id); f.queue.rate(card, false); }
+  assert.deepEqual(seen.slice(0, 5), ["0", "25", "1", "26", "2"]);
+  assert.deepEqual(seen.slice(5), seen.slice(0, 5));
+});
+
 test("learning steps graduate on success and FSRS increases calendar intervals on later recall", () => {
   const f = fixture();
   for (let index = 0; index < 10; index += 1) f.queue.rate(f.queue.deck(f.cards)[0], true);

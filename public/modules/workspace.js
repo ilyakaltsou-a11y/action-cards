@@ -63,12 +63,16 @@
     }
     function renderFolders() {
       const list = el("homeFolders"); list.replaceChildren();
-      options.getFolders().filter((folder) => options.getCards().some((card) => options.cardFolder(card) === folder)).slice(0, 6).forEach((folder) => {
+      const studyIds = new Set(options.getStudyCards().map((card) => card.id));
+      options.getFolders().filter((folder) => options.getCards().some((card) => options.cardFolder(card) === folder)).forEach((folder) => {
         const cards = options.getCards().filter((card) => options.cardFolder(card) === folder);
         const button = document.createElement("button"); button.type = "button"; button.className = "landscape-folder";
         const image = document.createElement("img"); image.alt = ""; image.src = cards.find((c) => c.imageUrl)?.imageUrl || `assets/themes/${data().theme}.jpg`;
         const text = document.createElement("span"); const title = document.createElement("strong"); title.textContent = folder.split(" / ").at(-1);
         const count = document.createElement("small"); count.textContent = cardCount(cards.length); text.append(title, count);
+        button.setAttribute("aria-label", `${folder} · ${cardCount(cards.length)}`);
+        const selected = cards.filter((card) => studyIds.has(card.id)).length;
+        if (selected) { const status = document.createElement("small"); status.className = "home-set-selected"; status.textContent = selected === cards.length ? "В занятии" : `В занятии: ${selected}`; text.append(status); }
         const arrow = document.createElement("span"); arrow.textContent = "›"; arrow.setAttribute("aria-hidden", "true"); button.append(image, text, arrow); list.appendChild(button);
         button.addEventListener("click", () => { options.onFolder(folder); route("cards"); });
       });
@@ -194,7 +198,9 @@
       el("homeGoalMeter").style.setProperty("--goal-progress", `${summary.progress}%`);
       el("homeGoalMeter").setAttribute("aria-valuemax", String(summary.goal));
       el("homeGoalMeter").setAttribute("aria-valuenow", String(Math.min(summary.todayCount, summary.goal)));
-      el("homeCardCount").textContent = `${cardCount(options.getStudyCards().length)} в выбранном наборе`;
+      const studyCards = options.getStudyCards();
+      const studyFolders = [...new Set(studyCards.map(options.cardFolder))];
+      el("homeCardCount").textContent = `${cardCount(studyCards.length)} · ${studyFolders.length === 1 ? studyFolders[0].split(" / ").at(-1) : `Наборов: ${studyFolders.length}`}`;
       el("homeStudyTitle").textContent = options.getLanguage() === "polish" ? "Карточки English" : "Учить карточки";
       el("homeStudyPreview").src = options.currentCard()?.imageUrl || `assets/themes/${data().theme}.jpg`;
       document.querySelectorAll("[data-start-mode]").forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.startMode === options.getStudyMode())));
@@ -263,7 +269,7 @@
     document.querySelectorAll("[data-workspace-route]").forEach((button) => button.addEventListener("click", () => route(button.dataset.workspaceRoute)));
     document.querySelectorAll("[data-progress-days]").forEach((button) => button.addEventListener("click", () => { period = Number(button.dataset.progressDays); document.querySelectorAll("[data-progress-days]").forEach((b) => b.setAttribute("aria-pressed", String(b === button))); renderProgress(); }));
     el("homeGoalButton").addEventListener("click", options.openActivity);
-    el("homeDeckButton").addEventListener("click", options.openDeck);
+    el("homeDeckButton").addEventListener("click", options.openStudySelection);
     el("homeAddWordsButton").addEventListener("click", options.onDictionary);
     document.querySelectorAll("[data-start-mode]").forEach((button) => button.addEventListener("click", () => options.onStudyMode(button.dataset.startMode)));
     el("homeFavoritesButton").addEventListener("click", () => { options.onSelection(data().favorites.filter((f) => f.active).map((f) => f.id)); route("cards"); });

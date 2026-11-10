@@ -439,6 +439,76 @@ test("practice selection combines folders and individual cards without changing 
   assert.equal(reloaded.state.studySettings.mode, "russian");
 });
 
+test("home exposes the pronunciation set and starts the folders selected with checkboxes instead of opening library management", async () => {
+  const app = await launch(); const doc = app.document;
+  const folders = [...doc.querySelectorAll("#homeFolders button")];
+  assert.ok(folders.length > 6);
+  assert.ok(folders.some((row) => row.textContent.includes("Разговорное произношение")));
+  doc.getElementById("homeDeckButton").click();
+  assert.equal(doc.getElementById("practiceSelectionDialog").open, true);
+  assert.equal(doc.getElementById("deckDialog").open, false);
+  assert.equal(doc.getElementById("practiceCardsStep").hasAttribute("open"), false);
+  assert.equal(doc.getElementById("applyPracticeSelectionButton").textContent, "Учить выбранное");
+  const search = doc.getElementById("practiceFolderSearch");
+  search.value = "разговорное"; search.dispatchEvent(new app.window.Event("input"));
+  assert.deepEqual([...doc.querySelectorAll("#practiceFolderChoices input")].map((input) => input.value), ["all", "Стартовые / Разговорное произношение"]);
+  choosePracticeCheckbox(app, "#practiceFolderChoices", "all", false);
+  choosePracticeCheckbox(app, "#practiceFolderChoices", "Стартовые / Разговорное произношение", true);
+  search.value = "действия"; search.dispatchEvent(new app.window.Event("input"));
+  choosePracticeCheckbox(app, "#practiceFolderChoices", "Стартовые / Действия с предметами", true);
+  doc.getElementById("applyPracticeSelectionButton").click(); await app.flush();
+  assert.equal(doc.body.dataset.section, "cards");
+  assert.equal(doc.getElementById("practiceSelectionDialog").open, false);
+  assert.deepEqual(Array.from(app.state.studySettings.selection.folderPaths), ["Стартовые / Действия с предметами", "Стартовые / Разговорное произношение"]);
+  assert.equal(app.state.studySettings.selection.cardIds, null);
+  const first = app.api.currentCard(); doc.getElementById("againButton").click();
+  assert.notEqual(app.api.currentCard().folderPath, first.folderPath);
+  const reloaded = await launch({ saved: app.getSaved(), initialStorage: [...app.storage] });
+  reloaded.document.getElementById("homeDeckButton").click();
+  const checked = [...reloaded.document.querySelectorAll("#practiceFolderChoices input")].filter((input) => input.checked).map((input) => input.value);
+  assert.deepEqual(checked.sort(), Array.from(app.state.studySettings.selection.folderPaths).sort());
+});
+
+test("home set buttons open their exact folder and cancel never changes the current selection", async () => {
+  const app = await launch(); const doc = app.document;
+  [...doc.querySelectorAll("#homeFolders button")].find((row) => row.textContent.includes("Разговорное произношение")).click();
+  assert.equal(doc.body.dataset.section, "cards");
+  assert.equal(app.api.currentCard().folderPath, "Стартовые / Разговорное произношение");
+  assert.equal(doc.getElementById("cardRussianPrompt").textContent, "What are you going to do?");
+  app.api.mountainWorkspace.route("home");
+  assert.match(doc.getElementById("homeCardCount").textContent, /Разговорное произношение/);
+  const selection = JSON.stringify(app.state.studySettings.selection);
+  doc.getElementById("homeDeckButton").click();
+  choosePracticeCheckbox(app, "#practiceFolderChoices", "all", false);
+  assert.equal(doc.getElementById("applyPracticeSelectionButton").disabled, true);
+  doc.getElementById("closePracticeSelectionButton").click();
+  assert.equal(JSON.stringify(app.state.studySettings.selection), selection);
+  assert.equal(doc.body.dataset.section, "home");
+});
+
+test("a child folder can be excluded from a selected parent, including when the parent has its own cards", async () => {
+  const app = await launch(); const doc = app.document;
+  const base = app.state.cards[0];
+  app.state.cards = [
+    { ...base, id: "parent", phrase: "Parent", folderPath: "Group" },
+    { ...base, id: "child-a", phrase: "Child A", folderPath: "Group / A" },
+    { ...base, id: "child-b", phrase: "Child B", folderPath: "Group / B" },
+  ];
+  doc.getElementById("homeDeckButton").click();
+  choosePracticeCheckbox(app, "#practiceFolderChoices", "all", false);
+  choosePracticeCheckbox(app, "#practiceFolderChoices", "Group", true);
+  choosePracticeCheckbox(app, "#practiceFolderChoices", "Group / A", false);
+  const parent = [...doc.querySelectorAll("#practiceFolderChoices input")].find((input) => input.value === "Group");
+  assert.equal(parent.checked, false); assert.equal(parent.indeterminate, true);
+  doc.getElementById("applyPracticeSelectionButton").click(); await app.flush();
+  assert.deepEqual(Array.from(app.state.studySettings.selection.folderPaths), ["Group"]);
+  assert.deepEqual(Array.from(app.state.studySettings.selection.cardIds).sort(), ["child-b", "parent"]);
+  const next = await launch({ saved: app.getSaved(), initialStorage: [...app.storage] });
+  next.document.getElementById("homeDeckButton").click();
+  const child = [...next.document.querySelectorAll("#practiceFolderChoices input")].find((input) => input.value === "Group / A");
+  assert.equal(child.checked, false);
+});
+
 test("cancel, empty selection, search and select-all never silently alter saved practice", async () => {
   const app = await launch();
   const doc = app.document;

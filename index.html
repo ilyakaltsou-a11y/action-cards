@@ -7,13 +7,13 @@
     <title>English by Pictures</title>
     <script>
       if (window.location.protocol === "file:") {
-        window.location.replace(`http://127.0.0.1:5176/${window.location.search || "?v=79"}`);
+        window.location.replace(`http://127.0.0.1:5176/${window.location.search || "?v=80"}`);
       }
     </script>
     <link rel="manifest" href="manifest.webmanifest" />
-    <link rel="stylesheet" href="styles.css?v=79" />
-    <link rel="stylesheet" href="mountain.css?v=79" />
-    <link rel="stylesheet" href="journey.css?v=79" />
+    <link rel="stylesheet" href="styles.css?v=80" />
+    <link rel="stylesheet" href="mountain.css?v=80" />
+    <link rel="stylesheet" href="journey.css?v=80" />
   </head>
   <body data-screen="home">
     <div class="landscape-backdrop" aria-hidden="true"></div>
@@ -54,7 +54,7 @@
           </article>
           <button class="home-text-entry" type="button" data-workspace-route="texts"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#book-open"></use></svg><span><strong>Текст из моих слов</strong><small>Создать задание</small></span><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#arrow-right"></use></svg></button>
         </div>
-        <div class="home-library"><div class="section-heading"><h3>Мои наборы</h3><button type="button" class="icon-button" id="homeDeckButton" title="Все папки" aria-label="Все папки"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#arrow-right"></use></svg></button></div><div class="home-folder-list" id="homeFolders"></div></div>
+        <div class="home-library"><div class="section-heading"><h3>Мои наборы</h3><button type="button" class="soft-button home-choose-sets" id="homeDeckButton"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#folder"></use></svg>Выбрать наборы</button></div><div class="home-folder-list" id="homeFolders"></div></div>
         <button class="home-add-words soft-button" id="homeAddWordsButton" type="button"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#plus"></use></svg>Добавить слова</button>
       </section>
       <section class="workspace-screen" id="progressScreen" aria-labelledby="progressTitle" hidden>
@@ -669,24 +669,28 @@
     <dialog class="deck-dialog" id="practiceSelectionDialog">
       <section class="deck-dialog-panel practice-selection-panel" aria-label="Выбор папок и карточек">
         <div class="panel-head">
-          <h2>Папки и карточки</h2>
+          <h2 id="practiceSelectionTitle">Выбрать наборы</h2>
           <button type="button" class="icon-button" id="closePracticeSelectionButton" aria-label="Закрыть выбор">×</button>
         </div>
-        <details class="practice-folder-step" open>
-          <summary>Папки</summary>
+        <div class="practice-folder-step">
+          <label class="practice-search"><span class="sr-only">Поиск наборов</span><input type="search" id="practiceFolderSearch" placeholder="Найти набор" autocomplete="off" /></label>
           <fieldset id="practiceFolderChoices" class="practice-folder-choices" aria-label="Папки для тренировки"></fieldset>
-        </details>
-        <h3>Карточки</h3>
-        <label class="practice-search"><span>Поиск карточек</span><input type="search" id="practiceCardSearch" autocomplete="off" /></label>
-        <div class="practice-selection-actions">
-          <button type="button" class="soft-button" id="selectAllPracticeCardsButton">Выбрать все</button>
-          <button type="button" class="soft-button" id="clearPracticeCardsButton">Снять все</button>
         </div>
-        <div id="practiceCardChoices" class="practice-card-choices"></div>
-        <button type="button" class="soft-button" id="morePracticeCardsButton" hidden>Показать ещё</button>
+        <details class="practice-cards-step" id="practiceCardsStep">
+          <summary>Отдельные карточки</summary>
+          <div class="practice-cards-content">
+            <label class="practice-search"><span class="sr-only">Поиск карточек</span><input type="search" id="practiceCardSearch" placeholder="Найти карточку" autocomplete="off" /></label>
+            <div class="practice-selection-actions">
+              <button type="button" class="soft-button" id="selectAllPracticeCardsButton">Выбрать все</button>
+              <button type="button" class="soft-button" id="clearPracticeCardsButton">Снять все</button>
+            </div>
+            <div id="practiceCardChoices" class="practice-card-choices"></div>
+            <button type="button" class="soft-button" id="morePracticeCardsButton" hidden>Показать ещё</button>
+          </div>
+        </details>
         <div class="practice-selection-footer">
           <span id="practiceSelectionCount" role="status"></span>
-          <button type="button" class="main-button" id="applyPracticeSelectionButton">Применить</button>
+          <button type="button" class="main-button" id="applyPracticeSelectionButton">Учить выбранное</button>
         </div>
       </section>
     </dialog>
@@ -708,10 +712,10 @@
         </div>
       </section>
     </dialog>
-    <script src="modules/practice-selection.js?v=79"></script>
-    <script src="modules/card-import.js?v=79"></script>
-    <script src="modules/activity.js?v=79"></script>
-    <script src="modules/swipe.js?v=79"></script>
+    <script src="modules/practice-selection.js?v=80"></script>
+    <script src="modules/card-import.js?v=80"></script>
+    <script src="modules/activity.js?v=80"></script>
+    <script src="modules/swipe.js?v=80"></script>
     <dialog class="deck-dialog" id="offlineDialog"><section class="deck-dialog-panel" aria-label="Офлайн-доступ"><div class="dialog-head"><div><p class="section-kicker">Всегда с собой</p><h2>Офлайн-доступ</h2></div><button type="button" class="icon-button" id="closeOfflineButton" aria-label="Закрыть офлайн-доступ">×</button></div><div id="offlineFolders" class="offline-folders"></div><div class="profile-actions"><button type="button" class="primary-button" id="downloadOfflineButton"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#arrow-down-to-line"></use></svg>Скачать</button><button type="button" class="soft-button" id="clearOfflineButton">Удалить загрузки</button></div><button type="button" class="soft-button" id="studyOfflineButton">Учить загруженные карточки</button><p id="offlineStatus" role="status" aria-live="polite"></p></section></dialog>
     <dialog class="deck-dialog" id="themesDialog"><section class="deck-dialog-panel" aria-label="Тема оформления"><div class="dialog-head"><h2>Тема оформления</h2><button type="button" class="icon-button" id="closeThemesButton" aria-label="Закрыть темы">×</button></div><div class="theme-grid" id="themeGrid" role="group" aria-label="Выбор пейзажа"></div></section></dialog>
     <dialog class="deck-dialog" id="noteWordsDialog"><section class="deck-dialog-panel note-words-panel" aria-label="Задание из слов"><div class="dialog-head"><h2>Задание из слов</h2><button type="button" class="icon-button" id="closeNoteWordsButton" aria-label="Закрыть выбор слов">×</button></div><label class="word-field"><span>Язык</span><select id="noteWordsLanguage"><option value="english">English</option><option value="polish">Polski</option></select></label><label class="word-field"><span>Поиск слов</span><input id="noteWordsSearch" type="search" /></label><div class="note-word-choices" id="noteWordChoices"></div><p id="noteWordsCount" role="status"></p><p id="noteWordsStatus" role="status" aria-live="polite"></p><button type="button" class="main-button" id="createNoteExerciseButton">Создать задание</button></section></dialog>
@@ -720,12 +724,12 @@
       <button type="button" data-workspace-route="cards" aria-label="Карточки" title="Карточки"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#layers"></use></svg><span>Карточки</span></button>
       <button type="button" data-workspace-route="texts" aria-label="Тексты" title="Тексты"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#book-open"></use></svg><span>Тексты</span></button>
     </nav>
-    <script src="modules/profile-backup.js?v=79"></script>
-    <script src="modules/workspace.js?v=79"></script>
-    <script src="modules/study-session.js?v=79"></script>
-    <script src="modules/text-library.js?v=79"></script>
-    <script src="modules/vendor/ts-fsrs.js?v=79"></script>
-    <script src="modules/review-queue.js?v=79"></script>
-    <script src="app.js?v=79"></script>
+    <script src="modules/profile-backup.js?v=80"></script>
+    <script src="modules/workspace.js?v=80"></script>
+    <script src="modules/study-session.js?v=80"></script>
+    <script src="modules/text-library.js?v=80"></script>
+    <script src="modules/vendor/ts-fsrs.js?v=80"></script>
+    <script src="modules/review-queue.js?v=80"></script>
+    <script src="app.js?v=80"></script>
   </body>
 </html>

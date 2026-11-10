@@ -37,6 +37,10 @@ body .home-text-entry > .ui-icon:first-child { width: 32px; height: 32px; }
 .home-text-entry small { display: block; color: #bedeca; font-size: 13px; margin-top: 10px; }
 .home-text-entry:hover, .landscape-folder:hover { border-color: #c4e4d4; background: rgba(131, 175, 149, .25); }
 .home-library { margin: 0 0 18px; }
+body .home-library .section-heading { flex-wrap: wrap; gap: 10px; }
+body .home-choose-sets { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 8px 12px; border-radius: 12px; font-size: 13px; }
+body .home-choose-sets .ui-icon { width: 18px; height: 18px; }
+.home-set-selected { color: #bddfce; }
 body .home-library .section-heading h3 { font-size: 24px; font-weight: 400; }
 .home-library .home-folder-list { grid-template-columns: 1fr; gap: 8px; }
 .home-library .landscape-folder { grid-template-columns: 64px minmax(0, 1fr) 18px; border-radius: 16px; min-height: 78px; padding: 8px; }
@@ -76,6 +80,23 @@ body .profile-shortcuts > button { display: flex; align-items: center; gap: 10px
 .profile-shortcuts small { display: block; font-size: 11px; color: var(--muted); margin-top: 4px; }
 .activity-rule { font-size: 13px; font-weight: 400; line-height: 1.5; color: var(--muted); }
 body .study-reveal-button { border-radius: 12px; min-height: 0; width: 100%; padding: 8px; font-size: 14px; }
+
+#practiceSelectionDialog .practice-selection-panel { gap: 14px; }
+#practiceSelectionDialog .practice-folder-step { display: flex; flex-direction: column; flex: 1 1 0; min-height: 0; gap: 10px; }
+#practiceSelectionDialog .practice-folder-choices { flex: 1 1 0; min-height: 80px; max-height: none; border-radius: 12px; }
+#practiceSelectionDialog .practice-folder-choice { grid-template-columns: 24px minmax(0, 1fr) auto; align-items: center; min-height: 48px; padding-left: calc(10px + var(--folder-depth, 0) * 14px); border-radius: 8px; }
+#practiceSelectionDialog .practice-folder-choice:has(input:checked),
+#practiceSelectionDialog .practice-folder-choice:has(input:indeterminate) { background: rgba(180, 223, 199, .12); }
+.practice-folder-choice small { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+#practiceSelectionDialog .practice-cards-step { min-height: 0; }
+.practice-cards-step summary { cursor: pointer; padding: 8px 0; font-size: 14px; color: #c5d7cd; }
+#practiceSelectionDialog .practice-cards-step[open] { flex: 1 1 0; display: flex; flex-direction: column; min-height: 200px; overflow: auto; }
+.practice-cards-content { display: flex; flex-direction: column; min-height: 0; gap: 8px; }
+#practiceSelectionDialog:has(.practice-cards-step[open]) .practice-folder-step { flex: 0 1 200px; }
+#practiceSelectionDialog .practice-card-choices { border-radius: 12px; }
+#practiceSelectionDialog .practice-selection-footer { display: grid; grid-template-columns: 1fr; gap: 10px; background: transparent; }
+#practiceSelectionDialog .practice-selection-footer > span { color: var(--muted); font-size: 13px; }
+#practiceSelectionDialog .practice-selection-footer > button { width: 100%; min-height: 48px; border-radius: 12px; font-size: 15px; }
 @media (min-width: 900px) {
   body[data-screen="home"] .home-screen { display: grid; grid-template-columns: 1fr 1fr; gap: 0 44px; align-items: start; }
   .home-intro, .home-goal, .home-learning-actions, .home-add-words { grid-column: 1; }

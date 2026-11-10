@@ -10,6 +10,19 @@
     return `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
   };
   const learning = (card) => [engine.State.Learning, engine.State.Relearning].includes(card.review?.memory.state);
+  function mixFolders(cards) {
+    const groups = new Map();
+    for (const card of cards) {
+      const key = card.folderPath || "";
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(card);
+    }
+    const result = [];
+    for (let index = 0; result.length < cards.length; index += 1) {
+      for (const group of groups.values()) if (group[index]) result.push(group[index]);
+    }
+    return result;
+  }
 
   function normalize(value) {
     if (value?.version !== 1 || !value.memory) return null;
@@ -43,7 +56,7 @@
       const due = pool.filter((card) => !learning(card) && card.attempts > 0 && (card.nextReviewAt || 0) <= time)
         .sort((a, b) => Number(b.correct < b.attempts) - Number(a.correct < a.attempts) || (a.nextReviewAt || 0) - (b.nextReviewAt || 0));
       // Reserve learning slots even while their short delay is running, instead of flooding with new cards.
-      const batch = [...learners, ...due, ...pool.filter((card) => !card.attempts).slice(0, allowance)].slice(0, BATCH_SIZE);
+      const batch = [...learners, ...due, ...mixFolders(pool.filter((card) => !card.attempts)).slice(0, allowance)].slice(0, BATCH_SIZE);
       const ready = batch.filter((card) => !learning(card) || !card.review.remaining || card.nextReviewAt <= time);
       const readyIds = new Set(ready.map((card) => card.id));
       order = [...order.filter((id) => readyIds.has(id)), ...ready.filter((card) => !order.includes(card.id)).map((card) => card.id)];
