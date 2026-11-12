@@ -7,7 +7,7 @@ const LANGUAGE_KEY = "action-cards:language:v1";
 const POLISH_KEY = "action-cards:polish:v1";
 const ENGLISH_TRAINER_KEY = "action-cards:english-trainer:v1";
 const STUDY_SETTINGS_KEY = "action-cards:study-settings:v1";
-const DEFAULT_CARDS_URL = "default-cards.json?v=80";
+const DEFAULT_CARDS_URL = "default-cards.json?v=81";
 const STARTER_PACKS_KEY = "action-cards:starter-packs:v1";
 const BASIC_ACTIONS_PACK = "basic-actions-v1";
 const BASIC_ACTIONS_FOLDER = "Стартовые / Действия с предметами";
@@ -319,13 +319,20 @@ const activityTracker = globalThis.ActionCardsActivity.createActivityTracker({
   persist: persistActivity,
 });
 const { prepare: prepareActivity, recordStudy: recordStudyActivity, hasChosenGoal: hasChosenActivityGoal, milestoneLabel } = activityTracker;
+const studyAnswer = globalThis.ActionCardsStudySession.createAnswer(document);
+const studyTimer = globalThis.ActionCardsStudyTimer.create({
+  document, storage: localStorage, open: openAppDialog, close: closeAppDialog,
+  schedule: setInterval, now: () => Date.now(),
+});
 const swipes = globalThis.ActionCardsSwipe.createSwipeController({
   element: els.flashcard, eventTarget: window,
-  hasCard: () => Boolean(currentCard()), onRate: rateCard,
+  hasCard: () => Boolean(currentCard()), canRateKnown: studyAnswer.canKnow, onRate: rateCard,
 });
 const reviewQueue = globalThis.ActionCardsReview.create({ getAllCards: () => state.cards, getProfile: () => state.profileId, now: () => Date.now() });
 studySession = globalThis.ActionCardsStudySession.create({
   document, eventTarget: window, getCard: currentCard,
+  canKnow: studyAnswer.canKnow,
+  hasDraft: studyAnswer.pending,
   getRevealState: () => ({ flipped: state.flipped, pronunciation: Boolean(currentCard()?.standardPhrase), russian: !currentCard()?.standardPhrase && (state.studySettings.mode === "russian" || Boolean(currentCard()?.textOnly)), translationVisible: !els.cardTranslation.classList.contains("is-hidden") }),
   onClose: () => { swipes.cancel(); mountainWorkspace.route("home"); },
   onRepeat: () => renderStudy(),
@@ -336,6 +343,12 @@ studySession = globalThis.ActionCardsStudySession.create({
   onSentences: () => setEnglishPractice("sentences"),
   onPolish: () => setLanguage("polish"),
   onCommand: (id) => document.getElementById(id).click(),
+});
+document.getElementById("studyAnswerInput").addEventListener("input", () => studySession.render());
+document.getElementById("studyAnswerInput").addEventListener("keydown", (event) => {
+  if (event.key !== "Enter" || event.shiftKey || event.isComposing) return;
+  event.preventDefault();
+  flipCard();
 });
 const textLibrary = globalThis.ActionCardsTextLibrary.create({
   document, getProfile: () => state.profileId, getLanguage: () => state.language,
@@ -637,6 +650,7 @@ function initProfile() {
 }
 
 function loadLocalCards() {
+  studyAnswer.reset();
   reviewQueue.reset();
   state.localSaveFailed = false;
   state.studySettings = normalizeStudySettings();
@@ -1506,7 +1520,8 @@ function renderStudyMode() {
 
 function updateCardFaceAccessibility() {
   const card = currentCard();
-  els.cardAnswerImage.hidden = !state.flipped || Boolean(card?.textOnly) || !card?.imageUrl;
+  studyAnswer.render(card, state.flipped);
+  els.cardAnswerImage.hidden = !state.flipped || studyAnswer.submitted() || Boolean(card?.textOnly) || !card?.imageUrl;
   els.cardFront.setAttribute("aria-hidden", String(state.flipped));
   els.cardBack.setAttribute("aria-hidden", String(!state.flipped));
   els.cardFront.toggleAttribute("inert", state.flipped);
@@ -1763,7 +1778,12 @@ function expandActiveFolderAncestors() {
 
 function flipCard() {
   if (!swipes.canFlip()) return;
-  if (!currentCard()) return;
+  const card = currentCard();
+  if (!card) return;
+  if (!state.flipped) {
+    studyAnswer.confirm(card.phrase);
+    document.getElementById("studyAnswerInput").blur();
+  }
   state.flipped = !state.flipped;
   if (!state.flipped) hideTranslation();
   els.flashcard.classList.toggle("is-flipped", state.flipped);
@@ -1813,9 +1833,10 @@ function updateSpeechControls() {
 
 function rateCard(known) {
   const card = currentCard();
-  if (!card) return;
+  if (!card || (known && !studyAnswer.canKnow())) return;
 
   reviewQueue.rate(card, known);
+  studyAnswer.reset();
   const activityMessage = recordStudyActivity();
   saveCards();
   renderStudy(0);
@@ -2764,7 +2785,9 @@ function setEnglishPractice(practice) {
 }
 
 function renderStudySession(active = document.body.dataset.screen === "learn") {
-  studySession.render(active && state.language === "english" && state.englishPractice === "cards");
+  const studying = active && state.language === "english" && state.englishPractice === "cards";
+  studySession.render(studying);
+  studyTimer.render(studying, studying && Boolean(currentCard()) && hasChosenActivityGoal() && !els.goalDialog.open);
 }
 
 function openCreatorDialog() {

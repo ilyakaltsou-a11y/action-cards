@@ -99,10 +99,11 @@ async function launch({ offline = false, saved, storedFolder = "all", exerciseRe
     }
     return { ok: true, json: async () => structuredClone(remote) };
   };
+  const intervals = new Map();
   const sandbox = {
     window, document, localStorage, fetch, URL, AbortController, AbortSignal,
     crypto: require("node:crypto").webcrypto, navigator: { language: "ru" },
-    setTimeout: () => 0, clearTimeout: () => {}, setInterval: () => 0, confirm: () => true, console,
+    setTimeout: () => 0, clearTimeout: () => {}, setInterval: (callback, delay) => intervals.set(delay, callback), confirm: () => true, console,
     caches: cachesMock,
   };
   let clockOffset = 0;
@@ -118,8 +119,65 @@ async function launch({ offline = false, saved, storedFolder = "all", exerciseRe
   const flush = async () => { for (let index = 0; index < 10; index += 1) await new Promise(setImmediate); };
   await flush();
   if (chooseGoal) document.querySelector('[data-goal-mode="medium"]').click();
-  return { document, window, state: sandbox.testApi.state, swipe: sandbox.testApi.swipes, api: sandbox.testApi, requests, listeners, flush, storage, setOffline: (value) => { offlineNow = value; }, advanceTime: (milliseconds) => { clockOffset += milliseconds; }, getSaved: () => remote };
+  return { document, window, state: sandbox.testApi.state, swipe: sandbox.testApi.swipes, api: sandbox.testApi, requests, listeners, flush, storage, setOffline: (value) => { offlineNow = value; }, advanceTime: (milliseconds) => { clockOffset += milliseconds; }, tickTimer: () => intervals.get(250)(), getSaved: () => remote };
 }
+
+test("wrong typed answers show the original and block only the known rating including swipes", async () => {
+  const app = await launch();
+  const el = (id) => app.document.getElementById(id);
+  const card = app.api.currentCard();
+  const before = card.attempts;
+  el("studyAnswerInput").value = "wrong words";
+  el("studyAnswerInput").dispatchEvent(new app.window.Event("input", { bubbles: true }));
+  assert.equal(el("gotItButton").disabled, true);
+  el("revealStudyButton").click();
+  assert.equal(el("studyAnswerText").textContent, "wrong words");
+  assert.equal(el("studyAnswerResult").dataset.correct, "false");
+  assert.ok(el("cardPhrase").textContent);
+  assert.equal(el("againButton").disabled, false);
+  pointer(app, "pointerdown", 100, 100);
+  pointer(app, "pointermove", 240, 110);
+  pointer(app, "pointerup", 240, 110);
+  assert.equal(card.attempts, before);
+  el("repeatStudyButton").click();
+  assert.equal(el("gotItButton").disabled, true);
+  el("againButton").click();
+  assert.equal(card.attempts, before + 1);
+  assert.equal(el("studyAnswerInput").value, "");
+  assert.equal(el("gotItButton").disabled, false);
+});
+
+test("a correct typed answer enables known and the comparison never requests AI", async () => {
+  const app = await launch();
+  const el = (id) => app.document.getElementById(id);
+  const requestCount = app.requests.length;
+  el("studyAnswerInput").value = app.api.currentCard().phrase.toUpperCase() + "!!!";
+  el("revealStudyButton").click();
+  assert.equal(el("studyAnswerResult").dataset.correct, "true");
+  assert.equal(el("gotItButton").disabled, false);
+  assert.equal(app.requests.length, requestCount);
+});
+
+test("entering flashcards offers the timer and inactivity pauses it until resumed", async () => {
+  const app = await launch();
+  const el = (id) => app.document.getElementById(id);
+  app.api.mountainWorkspace.route("cards");
+  assert.equal(el("studyTimeDialog").open, true);
+  app.document.querySelector('[data-study-minutes="30"]').click();
+  assert.equal(el("studyTimeDialog").open, false);
+  assert.equal(app.storage.get("action-cards:study-duration:v1"), "30");
+  app.advanceTime(60000);
+  app.tickTimer();
+  assert.match(el("studyTimeLabel").textContent, /Пауза через 5 с/);
+  app.advanceTime(5000);
+  app.tickTimer();
+  assert.equal(el("studyTimeLabel").hidden, true);
+  assert.match(el("studyTimeAction").textContent, /Продолжить · 28:55/);
+  el("studyTimeAction").click();
+  assert.equal(el("studyTimeLabel").hidden, false);
+  app.api.mountainWorkspace.route("home");
+  assert.equal(el("studyTimeLabel").hidden, true);
+});
 
 test("offline edits survive reload and resend automatically when connection returns", async () => {
   const app = await launch({ offline: true });
@@ -1001,6 +1059,7 @@ test("saved texts reopen offline per language without AI calls or consuming word
 test("focused study menu keeps library tools accessible and closes safely with Escape or mode changes", async () => {
   const app = await launch(); const doc = app.document;
   app.api.mountainWorkspace.route("learn");
+  doc.getElementById("skipStudyTimeButton").click();
   const menu = doc.getElementById("studySessionOptions");
   const escape = () => { const event = new app.window.Event("keydown", { cancelable: true }); event.key = "Escape"; app.window.dispatchEvent(event); };
   menu.setAttribute("open", ""); escape();
@@ -1024,6 +1083,7 @@ test("focused study menu keeps library tools accessible and closes safely with E
   assert.equal(doc.body.classList.contains("is-card-session"), false);
   assert.equal(doc.getElementById("polishView").hidden, false);
   doc.getElementById("englishModeButton").click();
+  doc.getElementById("skipStudyTimeButton").click();
   escape();
   assert.equal(doc.body.dataset.screen, "home");
   assert.equal(doc.body.classList.contains("is-card-session"), false);

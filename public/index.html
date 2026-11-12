@@ -7,13 +7,13 @@
     <title>English by Pictures</title>
     <script>
       if (window.location.protocol === "file:") {
-        window.location.replace(`http://127.0.0.1:5176/${window.location.search || "?v=80"}`);
+        window.location.replace(`http://127.0.0.1:5176/${window.location.search || "?v=81"}`);
       }
     </script>
     <link rel="manifest" href="manifest.webmanifest" />
-    <link rel="stylesheet" href="styles.css?v=80" />
-    <link rel="stylesheet" href="mountain.css?v=80" />
-    <link rel="stylesheet" href="journey.css?v=80" />
+    <link rel="stylesheet" href="styles.css?v=81" />
+    <link rel="stylesheet" href="mountain.css?v=81" />
+    <link rel="stylesheet" href="journey.css?v=81" />
   </head>
   <body data-screen="home">
     <div class="landscape-backdrop" aria-hidden="true"></div>
@@ -83,7 +83,10 @@
         <section class="study-card" id="englishCardsPractice" aria-label="Тренировка карточек">
           <header class="study-session-head">
             <button class="study-header-button" id="closeStudySessionButton" type="button" aria-label="Закрыть карточки" title="Закрыть карточки"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#x"></use></svg></button>
-            <h2 id="studyTitle">Карточки</h2>
+            <div class="study-heading"><h2 id="studyTitle">Карточки</h2>
+              <span id="studyTimeLabel" class="study-time" hidden></span>
+              <button id="studyTimeAction" class="study-time" type="button" hidden>Таймер</button>
+            </div>
             <details id="studySessionOptions" class="study-session-options">
               <summary class="study-header-button" aria-label="Настройки карточек" title="Настройки карточек"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#ellipsis"></use></svg></summary>
               <div class="study-options-popover">
@@ -135,6 +138,11 @@
             </span>
             <span class="flashcard-face flashcard-back" id="cardBack" aria-hidden="true" inert>
               <span class="card-answer-image" id="cardAnswerImage" role="img" aria-label="Иллюстрация к фразе" hidden></span>
+              <span class="study-answer-result" id="studyAnswerResult" hidden>
+                <span class="study-answer-caption">Твой ответ · <strong id="studyAnswerStatus"></strong></span>
+                <span id="studyAnswerText" lang="en"></span>
+              </span>
+              <span class="study-answer-caption" id="studyAnswerOriginalLabel" hidden>Правильный вариант</span>
               <span class="study-phrase-row"><span class="phrase" id="cardPhrase" lang="en">No cards yet</span><button class="listen-button" id="listenCardButton" type="button" aria-label="Прослушать фразу" title="Прослушать фразу"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#volume-2"></use></svg></button></span>
               <span class="card-pattern" id="cardPattern" hidden></span>
               <span class="translation-chip is-hidden" id="cardTranslation" role="button" tabindex="0">
@@ -148,6 +156,7 @@
             <span class="swipe-cue swipe-cue-left">Не знаю</span>
             <span class="swipe-cue swipe-cue-right">Знаю</span>
           </div>
+          <label id="studyAnswerField" class="study-answer-field" hidden><span class="sr-only">Твой ответ на английском</span><textarea id="studyAnswerInput" lang="en" rows="2" maxlength="2000" placeholder="Твой ответ на английском" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"></textarea></label>
           </div>
 
           <button class="main-button study-reveal-button" id="revealStudyButton" type="button">Показать фразу</button>
@@ -712,10 +721,10 @@
         </div>
       </section>
     </dialog>
-    <script src="modules/practice-selection.js?v=80"></script>
-    <script src="modules/card-import.js?v=80"></script>
-    <script src="modules/activity.js?v=80"></script>
-    <script src="modules/swipe.js?v=80"></script>
+    <script src="modules/practice-selection.js?v=81"></script>
+    <script src="modules/card-import.js?v=81"></script>
+    <script src="modules/activity.js?v=81"></script>
+    <script src="modules/swipe.js?v=81"></script>
     <dialog class="deck-dialog" id="offlineDialog"><section class="deck-dialog-panel" aria-label="Офлайн-доступ"><div class="dialog-head"><div><p class="section-kicker">Всегда с собой</p><h2>Офлайн-доступ</h2></div><button type="button" class="icon-button" id="closeOfflineButton" aria-label="Закрыть офлайн-доступ">×</button></div><div id="offlineFolders" class="offline-folders"></div><div class="profile-actions"><button type="button" class="primary-button" id="downloadOfflineButton"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#arrow-down-to-line"></use></svg>Скачать</button><button type="button" class="soft-button" id="clearOfflineButton">Удалить загрузки</button></div><button type="button" class="soft-button" id="studyOfflineButton">Учить загруженные карточки</button><p id="offlineStatus" role="status" aria-live="polite"></p></section></dialog>
     <dialog class="deck-dialog" id="themesDialog"><section class="deck-dialog-panel" aria-label="Тема оформления"><div class="dialog-head"><h2>Тема оформления</h2><button type="button" class="icon-button" id="closeThemesButton" aria-label="Закрыть темы">×</button></div><div class="theme-grid" id="themeGrid" role="group" aria-label="Выбор пейзажа"></div></section></dialog>
     <dialog class="deck-dialog" id="noteWordsDialog"><section class="deck-dialog-panel note-words-panel" aria-label="Задание из слов"><div class="dialog-head"><h2>Задание из слов</h2><button type="button" class="icon-button" id="closeNoteWordsButton" aria-label="Закрыть выбор слов">×</button></div><label class="word-field"><span>Язык</span><select id="noteWordsLanguage"><option value="english">English</option><option value="polish">Polski</option></select></label><label class="word-field"><span>Поиск слов</span><input id="noteWordsSearch" type="search" /></label><div class="note-word-choices" id="noteWordChoices"></div><p id="noteWordsCount" role="status"></p><p id="noteWordsStatus" role="status" aria-live="polite"></p><button type="button" class="main-button" id="createNoteExerciseButton">Создать задание</button></section></dialog>
@@ -724,12 +733,24 @@
       <button type="button" data-workspace-route="cards" aria-label="Карточки" title="Карточки"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#layers"></use></svg><span>Карточки</span></button>
       <button type="button" data-workspace-route="texts" aria-label="Тексты" title="Тексты"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#book-open"></use></svg><span>Тексты</span></button>
     </nav>
-    <script src="modules/profile-backup.js?v=80"></script>
-    <script src="modules/workspace.js?v=80"></script>
-    <script src="modules/study-session.js?v=80"></script>
-    <script src="modules/text-library.js?v=80"></script>
-    <script src="modules/vendor/ts-fsrs.js?v=80"></script>
-    <script src="modules/review-queue.js?v=80"></script>
-    <script src="app.js?v=80"></script>
+    <script src="modules/profile-backup.js?v=81"></script>
+    <script src="modules/workspace.js?v=81"></script>
+    <dialog id="studyTimeDialog" class="deck-dialog" aria-labelledby="studyTimeTitle">
+      <section class="deck-dialog-panel study-time-panel">
+        <h2 id="studyTimeTitle">Сколько времени на английский?</h2>
+        <div class="study-time-options">
+          <button type="button" class="soft-button" data-study-minutes="15">15 минут</button>
+          <button type="button" class="soft-button" data-study-minutes="30">30 минут</button>
+          <button type="button" class="soft-button" data-study-minutes="60">1 час</button>
+        </div>
+        <button type="button" class="soft-button" id="skipStudyTimeButton">Без таймера</button>
+      </section>
+    </dialog>
+    <script src="modules/study-session.js?v=81"></script>
+    <script src="modules/study-timer.js?v=81"></script>
+    <script src="modules/text-library.js?v=81"></script>
+    <script src="modules/vendor/ts-fsrs.js?v=81"></script>
+    <script src="modules/review-queue.js?v=81"></script>
+    <script src="app.js?v=81"></script>
   </body>
 </html>

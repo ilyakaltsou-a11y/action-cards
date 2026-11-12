@@ -1,13 +1,14 @@
 (() => {
   const SWIPE_THRESHOLD = 86;
 
-  function createSwipeController({ element, eventTarget, hasCard, onRate, now = Date.now }) {
+  function createSwipeController({ element, eventTarget, hasCard, canRateKnown = () => true, onRate, now = Date.now }) {
     let currentDrag = null;
     let ignoreFlipUntil = 0;
     let attached = false;
     const listeners = [];
 
     function setSwipeVisual(deltaX) {
+      if (deltaX > 0 && !canRateKnown()) deltaX = 0;
       const capped = Math.max(-190, Math.min(190, deltaX));
       const rawProgress = Math.min(1, Math.abs(capped) / (currentDrag?.threshold || swipeThreshold()));
       const progress = Math.min(1, rawProgress * 1.35);
@@ -71,7 +72,7 @@
       if (input === "pointer" && element.hasPointerCapture?.(pointerId)) element.releasePointerCapture(pointerId);
 
       if (active || moved) ignoreFlipUntil = now() + 450;
-      if (!active || Math.abs(deltaX) < threshold) return;
+      if (!active || Math.abs(deltaX) < threshold || (deltaX > 0 && !canRateKnown())) return;
       onRate(deltaX > 0);
     }
 
