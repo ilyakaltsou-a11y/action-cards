@@ -7,7 +7,7 @@ const LANGUAGE_KEY = "action-cards:language:v1";
 const POLISH_KEY = "action-cards:polish:v1";
 const ENGLISH_TRAINER_KEY = "action-cards:english-trainer:v1";
 const STUDY_SETTINGS_KEY = "action-cards:study-settings:v1";
-const DEFAULT_CARDS_URL = "default-cards.json?v=81";
+const DEFAULT_CARDS_URL = "default-cards.json?v=82";
 const STARTER_PACKS_KEY = "action-cards:starter-packs:v1";
 const BASIC_ACTIONS_PACK = "basic-actions-v1";
 const BASIC_ACTIONS_FOLDER = "Стартовые / Действия с предметами";
@@ -321,7 +321,7 @@ const activityTracker = globalThis.ActionCardsActivity.createActivityTracker({
 const { prepare: prepareActivity, recordStudy: recordStudyActivity, hasChosenGoal: hasChosenActivityGoal, milestoneLabel } = activityTracker;
 const studyAnswer = globalThis.ActionCardsStudySession.createAnswer(document);
 const studyTimer = globalThis.ActionCardsStudyTimer.create({
-  document, storage: localStorage, open: openAppDialog, close: closeAppDialog,
+  document, eventTarget: window, storage: localStorage, getProfile: () => state.profileId, open: openAppDialog, close: closeAppDialog,
   schedule: setInterval, now: () => Date.now(),
 });
 const swipes = globalThis.ActionCardsSwipe.createSwipeController({

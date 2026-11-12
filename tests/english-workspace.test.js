@@ -158,7 +158,7 @@ test("a correct typed answer enables known and the comparison never requests AI"
   assert.equal(app.requests.length, requestCount);
 });
 
-test("entering flashcards offers the timer and inactivity pauses it until resumed", async () => {
+test("inactivity pauses the daily timer and flipping the card resumes it without a button", async () => {
   const app = await launch();
   const el = (id) => app.document.getElementById(id);
   app.api.mountainWorkspace.route("cards");
@@ -171,12 +171,72 @@ test("entering flashcards offers the timer and inactivity pauses it until resume
   assert.match(el("studyTimeLabel").textContent, /Пауза через 5 с/);
   app.advanceTime(5000);
   app.tickTimer();
-  assert.equal(el("studyTimeLabel").hidden, true);
-  assert.match(el("studyTimeAction").textContent, /Продолжить · 28:55/);
-  el("studyTimeAction").click();
-  assert.equal(el("studyTimeLabel").hidden, false);
+  assert.match(el("studyTimeLabel").textContent, /Пауза · 28:55/);
+  assert.equal(el("studyTimeAction").hidden, true);
+  el("revealStudyButton").click();
+  assert.match(el("studyTimeLabel").textContent, /^28:55$/);
   app.api.mountainWorkspace.route("home");
   assert.equal(el("studyTimeLabel").hidden, true);
+});
+
+test("daily time survives leaving study, pagehide and a fresh launch, but resets on the next local day", async () => {
+  const key = "action-cards:study-time:v1:deck-workspace-test";
+  const app = await launch({ initialStorage: [
+    ["action-cards:study-duration:v1", "30"],
+    [key, JSON.stringify({ day: new Date().toDateString(), minutes: 30, remaining: 1440000 })],
+  ] });
+  const el = (id) => app.document.getElementById(id);
+  app.api.mountainWorkspace.route("cards");
+  assert.equal(el("studyTimeDialog").open, false);
+  assert.equal(el("studyTimeLabel").textContent, "24:00");
+  app.advanceTime(10000);
+  app.api.mountainWorkspace.route("home");
+  const balance = app.storage.get(key);
+  app.advanceTime(120000);
+  app.tickTimer();
+  assert.equal(app.storage.get(key), balance);
+  app.api.mountainWorkspace.route("cards");
+  assert.match(el("studyTimeLabel").textContent, /^23:50$/);
+  app.advanceTime(10000);
+  app.window.dispatchEvent(new app.window.Event("pagehide"));
+  const reloaded = await launch({ initialStorage: [...app.storage] });
+  reloaded.api.mountainWorkspace.route("cards");
+  assert.equal(reloaded.document.getElementById("studyTimeLabel").textContent, "23:40");
+  assert.equal(reloaded.document.getElementById("studyTimeDialog").open, false);
+  reloaded.api.mountainWorkspace.route("home");
+  reloaded.advanceTime(36 * 60 * 60 * 1000);
+  reloaded.api.mountainWorkspace.route("cards");
+  assert.equal(reloaded.document.getElementById("studyTimeLabel").textContent, "30:00");
+});
+
+test("a modal, hidden tab and empty study screen stop counting time", async () => {
+  const app = await launch({ initialStorage: [["action-cards:study-duration:v1", "15"]] });
+  const el = (id) => app.document.getElementById(id);
+  const key = "action-cards:study-time:v1:deck-workspace-test";
+  app.api.mountainWorkspace.route("cards");
+  el("studySessionOptions").setAttribute("open", "");
+  app.tickTimer();
+  const inMenu = app.storage.get(key);
+  app.advanceTime(120000);
+  app.tickTimer();
+  assert.equal(app.storage.get(key), inMenu);
+  el("studySessionOptions").removeAttribute("open");
+  app.tickTimer();
+  Object.defineProperty(app.document, "hidden", { configurable: true, value: true });
+  app.document.dispatchEvent(new app.window.Event("visibilitychange"));
+  const hidden = app.storage.get(key);
+  app.advanceTime(120000);
+  app.tickTimer();
+  assert.equal(app.storage.get(key), hidden);
+  Object.defineProperty(app.document, "hidden", { configurable: true, value: false });
+  app.document.dispatchEvent(new app.window.Event("visibilitychange"));
+  app.state.cards = [];
+  app.api.renderStudy(0);
+  const empty = app.storage.get(key);
+  app.advanceTime(120000);
+  app.tickTimer();
+  assert.equal(el("studyTimeLabel").hidden, true);
+  assert.equal(app.storage.get(key), empty);
 });
 
 test("offline edits survive reload and resend automatically when connection returns", async () => {
