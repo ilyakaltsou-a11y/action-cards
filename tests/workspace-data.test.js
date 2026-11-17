@@ -33,10 +33,13 @@ test("all nine distinct theme images are shipped and referenced in the offline s
 
 test("upgrading the shell keeps per-profile downloaded image caches", async () => {
   const handlers = new Map(); const deleted = [];
-  vm.runInNewContext(fs.readFileSync(path.join(root, "public/service-worker.js"), "utf8"), {
+  const shell = fs.readFileSync(path.join(root, "public/service-worker.js"), "utf8");
+  const current = /const CACHE_NAME = "([^"]+)"/.exec(shell)[1];
+  const previous = ["action-cards:v73-mountain", "action-cards:v-old"];
+  vm.runInNewContext(shell, {
     self: { addEventListener: (name, fn) => handlers.set(name, fn), clients: { claim: () => {} } },
-    caches: { keys: async () => ["action-cards:v72", "action-cards:v73", "action-cards:v73-mountain", "action-cards:v74", "action-cards:v75", "action-cards:v76", "action-cards:v77", "action-cards:v78", "action-cards:v79", "action-cards:v80", "action-cards:v81", "action-cards:v82", "action-cards:offline:v1:private-profile", "other-app"], delete: async (key) => deleted.push(key) },
+    caches: { keys: async () => [...previous, current, "action-cards:offline:v1:private-profile", "other-app"], delete: async (key) => deleted.push(key) },
   });
   let work; handlers.get("activate")({ waitUntil: (promise) => { work = promise; } }); await work;
-  assert.deepEqual(deleted, ["action-cards:v72", "action-cards:v73", "action-cards:v73-mountain", "action-cards:v74", "action-cards:v75", "action-cards:v76", "action-cards:v77", "action-cards:v78", "action-cards:v79", "action-cards:v80", "action-cards:v81"]);
+  assert.deepEqual(deleted, previous);
 });

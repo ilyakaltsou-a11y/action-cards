@@ -935,7 +935,8 @@ test("39 pronunciation pairs upgrade once, show standard English first in either
   doc.getElementById("againButton").click(); await app.flush();
   const saved = app.getSaved().cards.find((entry) => entry.id === card.id);
   assert.equal(saved.standardPhrase, card.standardPhrase);
-  assert.equal(saved.review.remaining, 4);
+  assert.equal(saved.review.remaining, 1);
+  assert.equal(saved.review.step, 0);
   const next = await launch({ saved: app.getSaved(), initialStorage: [...app.storage] });
   assert.equal(next.state.cards.filter((entry) => entry.standardPhrase).length, 39);
   assert.equal(next.state.cards.find((entry) => entry.id === card.id).review.memory.reps, 1);
@@ -1433,7 +1434,7 @@ test("first mouse drag captures the card, shows green feedback and rates exactly
   assert.equal(element.style.transform, "");
 });
 
-test("touch swipe shows red feedback and schedules an unknown card after four other ratings", async () => {
+test("touch swipe shows red feedback and schedules an unknown card after one other rating", async () => {
   const app = await launch();
   const card = app.api.currentCard();
   const attempts = card.attempts;
@@ -1444,12 +1445,11 @@ test("touch swipe shows red feedback and schedules an unknown card after four ot
   touch(app, "touchend", 80, 110);
   assert.equal(card.attempts, attempts + 1);
   assert.equal(card.correct, correct);
-  assert.equal(card.review.remaining, 4);
-  for (let index = 0; index < 4; index += 1) {
-    assert.notEqual(app.api.currentCard().id, card.id);
-    app.document.getElementById("againButton").click();
-  }
+  assert.equal(card.review.remaining, 1);
+  assert.notEqual(app.api.currentCard().id, card.id);
+  app.document.getElementById("againButton").click();
   assert.equal(app.api.currentCard().id, card.id);
+  assert.equal(app.document.getElementById("reviewStatus").textContent, "Закрепление");
 });
 
 test("vertical touch motion leaves native page scrolling available without rating or flipping", async () => {

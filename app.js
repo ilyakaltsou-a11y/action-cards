@@ -7,7 +7,7 @@ const LANGUAGE_KEY = "action-cards:language:v1";
 const POLISH_KEY = "action-cards:polish:v1";
 const ENGLISH_TRAINER_KEY = "action-cards:english-trainer:v1";
 const STUDY_SETTINGS_KEY = "action-cards:study-settings:v1";
-const DEFAULT_CARDS_URL = "default-cards.json?v=82";
+const DEFAULT_CARDS_URL = "default-cards.json?v=83";
 const STARTER_PACKS_KEY = "action-cards:starter-packs:v1";
 const BASIC_ACTIONS_PACK = "basic-actions-v1";
 const BASIC_ACTIONS_FOLDER = "Стартовые / Действия с предметами";
@@ -1346,6 +1346,7 @@ function toggleTranslation(event) {
 function reviewLabel(card) {
   if (!card) return "0 карточек";
   if (!card.attempts) return "Новая";
+  if (card.review?.step != null) return "Закрепление";
   if ((card.nextReviewAt || 0) <= Date.now()) return "Пора повторить";
 
   const minutes = Math.ceil((card.nextReviewAt - Date.now()) / 60000);

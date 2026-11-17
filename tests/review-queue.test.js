@@ -13,7 +13,7 @@ function fixture(count = 50) {
   return { queue, create, get cards() { return cards; }, reload: () => { cards = JSON.parse(JSON.stringify(cards)); }, now: () => time, advance: (ms) => { time += ms; }, profile: (value) => { profile = value; } };
 }
 
-test("50 unknown cards stay in a batch of five and return after four other ratings", () => {
+test("unknown cards return after one other answer without flooding the queue with new cards", () => {
   const f = fixture(); const seen = [];
   for (let index = 0; index < 30; index += 1) {
     const deck = f.queue.deck(f.cards);
@@ -21,9 +21,8 @@ test("50 unknown cards stay in a batch of five and return after four other ratin
     const card = deck[0]; seen.push(card.id);
     f.queue.rate(card, false);
   }
-  assert.deepEqual(seen.slice(0, 10), ["0", "1", "2", "3", "4", "0", "1", "2", "3", "4"]);
-  assert.equal(new Set(seen).size, 5);
-  assert.equal(f.cards.filter((card) => card.attempts).length, 5);
+  assert.deepEqual(seen, Array.from({ length: 30 }, (_, index) => String(index % 2)));
+  assert.equal(f.cards.filter((card) => card.attempts).length, 2);
   assert.equal(f.cards[0].correct, 0);
 });
 
@@ -31,7 +30,7 @@ test("new intake mixes selected folders without expanding the five-card learning
   const f = fixture();
   f.cards.forEach((card, index) => { card.folderPath = index < 25 ? "Actions" : "Pronunciation"; });
   const seen = [];
-  for (let index = 0; index < 10; index += 1) { const card = f.queue.deck(f.cards)[0]; seen.push(card.id); f.queue.rate(card, false); }
+  for (let index = 0; index < 10; index += 1) { const card = f.queue.deck(f.cards)[0]; seen.push(card.id); f.queue.rate(card, true); }
   assert.deepEqual(seen.slice(0, 5), ["0", "25", "1", "26", "2"]);
   assert.deepEqual(seen.slice(5), seen.slice(0, 5));
 });
@@ -55,7 +54,7 @@ test("a forgotten review returns to learning rather than keeping its long interv
   f.queue.rate(card, true); f.advance(600000); f.queue.rate(card, true);
   f.advance(card.nextReviewAt - f.now()); f.queue.rate(card, false);
   assert.equal(card.review.memory.state, 3);
-  assert.equal(card.review.remaining, 4);
+  assert.equal(card.review.remaining, 1);
   assert.ok(card.nextReviewAt - f.now() <= 600000);
   assert.equal(f.queue.deck(f.cards).length, 0);
   f.advance(600000); assert.equal(f.queue.deck(f.cards)[0].id, card.id);
@@ -66,9 +65,9 @@ test("old weak reviews precede new cards and their batch does not grow while the
   f.cards.slice(0, 20).forEach((card) => Object.assign(card, { attempts: 6, correct: 1, nextReviewAt: f.now() - 1000 }));
   const seen = new Set();
   for (let index = 0; index < 25; index += 1) { const card = f.queue.deck(f.cards)[0]; seen.add(card.id); f.queue.rate(card, false); }
-  assert.equal(seen.size, 5);
+  assert.deepEqual([...seen], ["0", "1"]);
   assert.ok([...seen].every((id) => Number(id) < 20));
-  assert.equal(f.cards[0].attempts, 11);
+  assert.equal(f.cards[0].attempts, 19);
 });
 
 test("daily cap persists after reload, applies across folders, and renews on the next local day", () => {
@@ -84,12 +83,52 @@ test("daily cap persists after reload, applies across folders, and renews on the
 test("remaining gaps survive JSON persistence and neither deck reads nor flips consume them", () => {
   const f = fixture(5); f.queue.rate(f.queue.deck(f.cards)[0], false);
   f.reload(); const next = f.create();
-  assert.equal(f.cards[0].review.remaining, 4);
+  assert.equal(f.cards[0].review.remaining, 1);
   for (let index = 0; index < 20; index += 1) next.deck(f.cards);
-  assert.equal(f.cards[0].review.remaining, 4);
-  for (let index = 0; index < 4; index += 1) next.rate(next.deck(f.cards)[0], false);
+  assert.equal(f.cards[0].review.remaining, 1);
+  next.rate(next.deck(f.cards)[0], false);
   assert.equal(next.deck(f.cards)[0].id, "0");
   assert.deepEqual(api.normalize(f.cards[0].review), f.cards[0].review);
+});
+
+test("recall after a miss advances through gaps of 1, 5, 15, 30 and 60 answers, then returns to FSRS", () => {
+  const f = fixture(150);
+  const target = f.cards[0];
+  for (const card of f.cards.slice(1)) Object.assign(card, { attempts: 1, correct: 1, nextReviewAt: f.now() });
+  f.queue.rate(target, false);
+  for (const gap of [1, 5, 15, 30, 60]) {
+    assert.equal(target.review.remaining, gap);
+    for (let index = 0; index < gap; index += 1) {
+      f.advance(61000);
+      const card = f.queue.deck(f.cards)[0];
+      assert.notEqual(card.id, target.id);
+      f.queue.rate(card, true);
+    }
+    assert.equal(f.queue.deck(f.cards)[0], target);
+    f.queue.rate(target, true);
+  }
+  assert.equal(target.review.remaining, 0);
+  assert.equal(target.review.step, undefined);
+  assert.equal(target.review.memory.state, 2);
+  assert.ok(target.nextReviewAt > f.now());
+});
+
+test("a miss resets an advanced repeat, and a small selection can use the timed fallback", () => {
+  const f = fixture(1);
+  const [card] = f.cards;
+  f.queue.rate(card, false);
+  for (const delay of [1, 5, 10]) {
+    f.advance(delay * 60000);
+    assert.equal(f.queue.deck(f.cards)[0], card);
+    f.queue.rate(card, true);
+  }
+  assert.equal(card.review.remaining, 30);
+  assert.deepEqual(api.normalize(card.review), card.review);
+  f.advance(600000);
+  f.queue.rate(f.queue.deck(f.cards)[0], false);
+  assert.equal(card.review.step, 0);
+  assert.equal(card.review.remaining, 1);
+  assert.equal(api.normalize({ ...card.review, step: undefined, remaining: 4 }).remaining, 1);
 });
 
 test("single-card packs wait instead of immediately repeating, and the visible card stays pinned", () => {
