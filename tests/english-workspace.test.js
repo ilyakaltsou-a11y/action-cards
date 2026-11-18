@@ -7,7 +7,7 @@ const { parseHTML } = require("linkedom");
 const root = path.resolve(__dirname, "..");
 const defaults = JSON.parse(fs.readFileSync(path.join(root, "public/default-cards.json")));
 
-async function launch({ offline = false, saved, storedFolder = "all", exerciseResponse, exerciseFailureStatus, localStudySettings, importPlan, importImage, beforeSave, initialStorage = [], failLocalSave = false, cachesMock, chooseGoal = true } = {}) {
+async function launch({ offline = false, saved, storedFolder = "all", exerciseResponse, exerciseFailureStatus, localStudySettings, importPlan, importImage, beforeSave, initialStorage = [], failLocalSave = false, cachesMock, chooseGoal = true, confirm = () => true } = {}) {
   const { document, window } = parseHTML(fs.readFileSync(path.join(root, "public/index.html"), "utf8"));
   const storage = new Map([["action-cards:folder:v1", storedFolder], ...initialStorage]);
   let offlineNow = offline;
@@ -103,7 +103,7 @@ async function launch({ offline = false, saved, storedFolder = "all", exerciseRe
   const sandbox = {
     window, document, localStorage, fetch, URL, AbortController, AbortSignal,
     crypto: require("node:crypto").webcrypto, navigator: { language: "ru" },
-    setTimeout: () => 0, clearTimeout: () => {}, setInterval: (callback, delay) => intervals.set(delay, callback), confirm: () => true, console,
+    setTimeout: () => 0, clearTimeout: () => {}, setInterval: (callback, delay) => intervals.set(delay, callback), confirm, console,
     caches: cachesMock,
   };
   let clockOffset = 0;
@@ -157,6 +157,59 @@ test("a correct typed answer enables known and the comparison never requests AI"
   assert.equal(el("gotItButton").disabled, false);
   assert.equal(app.requests.length, requestCount);
 });
+
+test("the study menu edits the visible card and deletes it only after confirmation, including offline persistence", async () => {
+  let approved = false;
+  const app = await launch({ confirm: () => approved });
+  app.api.mountainWorkspace.route("cards");
+  const card = app.api.currentCard();
+  const menu = app.document.getElementById("studySessionOptions");
+  menu.setAttribute("open", "");
+  app.document.getElementById("editStudyCardButton").click();
+  assert.equal(menu.hasAttribute("open"), false);
+  assert.equal(app.state.editingCardId, card.id);
+  assert.equal(app.document.getElementById("manualPhraseInput").value, card.phrase);
+  assert.equal(app.document.getElementById("cardCreatorDialog").open, true);
+  app.document.getElementById("cancelEditButton").click();
+  app.document.getElementById("cardCreatorDialog").close();
+  app.setOffline(true);
+  const size = app.state.cards.length;
+  app.document.getElementById("deleteStudyCardButton").click();
+  assert.equal(app.state.cards.length, size);
+  assert.equal(app.api.currentCard().id, card.id);
+  approved = true;
+  menu.setAttribute("open", "");
+  app.document.getElementById("deleteStudyCardButton").click();
+  assert.equal(menu.hasAttribute("open"), false);
+  assert.equal(app.state.cards.length, size - 1);
+  assert.equal(app.state.cards.some((entry) => entry.id === card.id), false);
+  const reloaded = await launch({ offline: true, initialStorage: [...app.storage] });
+  assert.equal(reloaded.state.cards.some((entry) => entry.id === card.id), false);
+  app.state.cards = [];
+  app.api.renderStudy(0);
+  assert.equal(app.document.getElementById("editStudyCardButton").disabled, true);
+  assert.equal(app.document.getElementById("deleteStudyCardButton").disabled, true);
+});
+
+for (const minutes of [15, 30, 60]) {
+  test(`finishing ${minutes} daily minutes celebrates the achievement and survives reload`, async () => {
+    const key = "action-cards:study-time:v1:deck-workspace-test";
+    const app = await launch({ initialStorage: [[key, JSON.stringify({ day: new Date().toDateString(), minutes, remaining: 1000 })]] });
+    app.api.mountainWorkspace.route("cards");
+    app.advanceTime(1000);
+    app.tickTimer();
+    const label = app.document.getElementById("studyTimeLabel");
+    assert.equal(label.textContent, `Отличная работа! ${minutes} минут занятий`);
+    assert.equal(label.dataset.status, "done");
+    assert.equal(label.hidden, false);
+    app.document.getElementById("revealStudyButton").click();
+    assert.equal(label.dataset.status, "done");
+    const reloaded = await launch({ initialStorage: [...app.storage] });
+    reloaded.api.mountainWorkspace.route("cards");
+    assert.equal(reloaded.document.getElementById("studyTimeLabel").textContent, label.textContent);
+    assert.equal(reloaded.document.getElementById("studyTimeDialog").open, false);
+  });
+}
 
 test("inactivity pauses the daily timer and flipping the card resumes it without a button", async () => {
   const app = await launch();

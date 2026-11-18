@@ -32,7 +32,7 @@
       },
     };
   }
-  function create({ document, eventTarget, getCard, getRevealState, canKnow, hasDraft, onClose, onRepeat, onReveal, onSentences, onPolish, onCommand }) {
+  function create({ document, eventTarget, getCard, getRevealState, canKnow, hasDraft, onClose, onRepeat, onReveal, onSentences, onPolish, onCommand, onEdit, onDelete }) {
     const el = (id) => document.getElementById(id);
     const options = el("studySessionOptions");
     let active = false;
@@ -42,6 +42,8 @@
     el("revealStudyButton").addEventListener("click", onReveal);
     el("sessionSentencesButton").addEventListener("click", onSentences);
     el("sessionPolishButton").addEventListener("click", onPolish);
+    el("editStudyCardButton").addEventListener("click", () => { if (getCard()) onEdit(getCard().id); });
+    el("deleteStudyCardButton").addEventListener("click", () => { if (getCard()) onDelete(getCard().id); });
     options.querySelectorAll("[data-study-command]").forEach((button) => {
       button.addEventListener("click", () => onCommand(button.dataset.studyCommand));
     });
@@ -56,7 +58,7 @@
       active = next;
       document.body.classList.toggle("is-card-session", active);
       if (!active) closeOptions();
-      for (const id of ["againButton", "repeatStudyButton", "gotItButton", "revealStudyButton"]) el(id).disabled = !getCard();
+      for (const id of ["againButton", "repeatStudyButton", "gotItButton", "revealStudyButton", "editStudyCardButton", "deleteStudyCardButton"]) el(id).disabled = !getCard();
       el("gotItButton").disabled = !getCard() || !canKnow();
       const { flipped, russian, pronunciation, translationVisible } = getRevealState();
       el("revealStudyButton").textContent = !flipped ? (hasDraft() ? "Перевернуть и проверить" : pronunciation ? "Разговорный вариант" : "Показать фразу") : russian ? "Показать русский текст" : translationVisible ? (pronunciation ? "К полной фразе" : "К картинке") : "Показать перевод";

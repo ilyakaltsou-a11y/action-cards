@@ -7,7 +7,7 @@ const LANGUAGE_KEY = "action-cards:language:v1";
 const POLISH_KEY = "action-cards:polish:v1";
 const ENGLISH_TRAINER_KEY = "action-cards:english-trainer:v1";
 const STUDY_SETTINGS_KEY = "action-cards:study-settings:v1";
-const DEFAULT_CARDS_URL = "default-cards.json?v=83";
+const DEFAULT_CARDS_URL = "default-cards.json?v=84";
 const STARTER_PACKS_KEY = "action-cards:starter-packs:v1";
 const BASIC_ACTIONS_PACK = "basic-actions-v1";
 const BASIC_ACTIONS_FOLDER = "Стартовые / Действия с предметами";
@@ -342,6 +342,8 @@ studySession = globalThis.ActionCardsStudySession.create({
   },
   onSentences: () => setEnglishPractice("sentences"),
   onPolish: () => setLanguage("polish"),
+  onEdit: startEditCard,
+  onDelete: deleteCard,
   onCommand: (id) => document.getElementById(id).click(),
 });
 document.getElementById("studyAnswerInput").addEventListener("input", () => studySession.render());
@@ -1581,14 +1583,20 @@ function renderDeck() {
     });
     item.querySelector(".delete-card-button").addEventListener("click", (event) => {
       event.stopPropagation();
-      state.cards = state.cards.filter((savedCard) => savedCard.id !== card.id);
-      state.selectedCardIds.delete(card.id);
-      if (state.editingCardId === card.id) cancelEdit();
-      saveCards();
-      renderStudy(Math.min(state.currentIndex, state.cards.length - 1));
+      deleteCard(card.id);
     });
     els.deckList.append(item);
   });
+}
+
+function deleteCard(cardId) {
+  const card = state.cards.find((entry) => entry.id === cardId);
+  if (!card || !confirm(`Удалить карточку «${card.phrase}»?`)) return;
+  state.cards = state.cards.filter((entry) => entry.id !== cardId);
+  state.selectedCardIds.delete(cardId);
+  if (state.editingCardId === cardId) cancelEdit();
+  saveCards();
+  renderStudy(0);
 }
 
 function selectedCards() {

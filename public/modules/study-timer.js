@@ -113,7 +113,8 @@
       const time = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
       label.hidden = !visible || current.status === "off";
       const message = current.warning ? `Пауза через ${current.warning} с · ${time}` :
-        current.status === "done" ? "Дневной лимит исчерпан" : current.status === "paused" ? `Пауза · ${time}` : time;
+        current.status === "done" ? `Отличная работа! ${minutes} минут занятий` : current.status === "paused" ? `Пауза · ${time}` : time;
+      label.dataset.status = current.status;
       if (label.textContent !== message) label.textContent = message;
       action.hidden = !visible || current.status !== "off";
     }

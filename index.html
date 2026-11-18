@@ -7,13 +7,13 @@
     <title>English by Pictures</title>
     <script>
       if (window.location.protocol === "file:") {
-        window.location.replace(`http://127.0.0.1:5176/${window.location.search || "?v=83"}`);
+        window.location.replace(`http://127.0.0.1:5176/${window.location.search || "?v=84"}`);
       }
     </script>
     <link rel="manifest" href="manifest.webmanifest" />
-    <link rel="stylesheet" href="styles.css?v=83" />
-    <link rel="stylesheet" href="mountain.css?v=83" />
-    <link rel="stylesheet" href="journey.css?v=83" />
+    <link rel="stylesheet" href="styles.css?v=84" />
+    <link rel="stylesheet" href="mountain.css?v=84" />
+    <link rel="stylesheet" href="journey.css?v=84" />
   </head>
   <body data-screen="home">
     <div class="landscape-backdrop" aria-hidden="true"></div>
@@ -106,6 +106,10 @@
             <span>Русский текст под картинкой</span>
           </label>
                 <div class="study-session-links"><button type="button" class="soft-button" id="sessionSentencesButton">Предложения</button><button type="button" class="soft-button" id="sessionPolishButton">Polski</button></div>
+                <div class="study-card-tools">
+                  <button type="button" class="soft-button" id="editStudyCardButton"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#notebook-pen"></use></svg>Изменить карточку</button>
+                  <button type="button" class="soft-button" id="deleteStudyCardButton"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#trash-2"></use></svg>Удалить карточку</button>
+                </div>
                 <div class="card-extra-actions">
                   <button type="button" class="icon-button" id="favoriteCardButton" aria-label="Добавить в избранное" aria-pressed="false" title="Избранное"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#bookmark"></use></svg></button>
                   <button type="button" class="icon-button" id="noteCardButton" aria-label="Заметка к карточке" title="Записать в Notes"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#notebook-pen"></use></svg></button>
@@ -721,10 +725,10 @@
         </div>
       </section>
     </dialog>
-    <script src="modules/practice-selection.js?v=83"></script>
-    <script src="modules/card-import.js?v=83"></script>
-    <script src="modules/activity.js?v=83"></script>
-    <script src="modules/swipe.js?v=83"></script>
+    <script src="modules/practice-selection.js?v=84"></script>
+    <script src="modules/card-import.js?v=84"></script>
+    <script src="modules/activity.js?v=84"></script>
+    <script src="modules/swipe.js?v=84"></script>
     <dialog class="deck-dialog" id="offlineDialog"><section class="deck-dialog-panel" aria-label="Офлайн-доступ"><div class="dialog-head"><div><p class="section-kicker">Всегда с собой</p><h2>Офлайн-доступ</h2></div><button type="button" class="icon-button" id="closeOfflineButton" aria-label="Закрыть офлайн-доступ">×</button></div><div id="offlineFolders" class="offline-folders"></div><div class="profile-actions"><button type="button" class="primary-button" id="downloadOfflineButton"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#arrow-down-to-line"></use></svg>Скачать</button><button type="button" class="soft-button" id="clearOfflineButton">Удалить загрузки</button></div><button type="button" class="soft-button" id="studyOfflineButton">Учить загруженные карточки</button><p id="offlineStatus" role="status" aria-live="polite"></p></section></dialog>
     <dialog class="deck-dialog" id="themesDialog"><section class="deck-dialog-panel" aria-label="Тема оформления"><div class="dialog-head"><h2>Тема оформления</h2><button type="button" class="icon-button" id="closeThemesButton" aria-label="Закрыть темы">×</button></div><div class="theme-grid" id="themeGrid" role="group" aria-label="Выбор пейзажа"></div></section></dialog>
     <dialog class="deck-dialog" id="noteWordsDialog"><section class="deck-dialog-panel note-words-panel" aria-label="Задание из слов"><div class="dialog-head"><h2>Задание из слов</h2><button type="button" class="icon-button" id="closeNoteWordsButton" aria-label="Закрыть выбор слов">×</button></div><label class="word-field"><span>Язык</span><select id="noteWordsLanguage"><option value="english">English</option><option value="polish">Polski</option></select></label><label class="word-field"><span>Поиск слов</span><input id="noteWordsSearch" type="search" /></label><div class="note-word-choices" id="noteWordChoices"></div><p id="noteWordsCount" role="status"></p><p id="noteWordsStatus" role="status" aria-live="polite"></p><button type="button" class="main-button" id="createNoteExerciseButton">Создать задание</button></section></dialog>
@@ -733,8 +737,8 @@
       <button type="button" data-workspace-route="cards" aria-label="Карточки" title="Карточки"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#layers"></use></svg><span>Карточки</span></button>
       <button type="button" data-workspace-route="texts" aria-label="Тексты" title="Тексты"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#book-open"></use></svg><span>Тексты</span></button>
     </nav>
-    <script src="modules/profile-backup.js?v=83"></script>
-    <script src="modules/workspace.js?v=83"></script>
+    <script src="modules/profile-backup.js?v=84"></script>
+    <script src="modules/workspace.js?v=84"></script>
     <dialog id="studyTimeDialog" class="deck-dialog" aria-labelledby="studyTimeTitle">
       <section class="deck-dialog-panel study-time-panel">
         <h2 id="studyTimeTitle">Сколько времени на английский?</h2>
@@ -746,11 +750,11 @@
         <button type="button" class="soft-button" id="skipStudyTimeButton">Без таймера</button>
       </section>
     </dialog>
-    <script src="modules/study-session.js?v=83"></script>
-    <script src="modules/study-timer.js?v=83"></script>
-    <script src="modules/text-library.js?v=83"></script>
-    <script src="modules/vendor/ts-fsrs.js?v=83"></script>
-    <script src="modules/review-queue.js?v=83"></script>
-    <script src="app.js?v=83"></script>
+    <script src="modules/study-session.js?v=84"></script>
+    <script src="modules/study-timer.js?v=84"></script>
+    <script src="modules/text-library.js?v=84"></script>
+    <script src="modules/vendor/ts-fsrs.js?v=84"></script>
+    <script src="modules/review-queue.js?v=84"></script>
+    <script src="app.js?v=84"></script>
   </body>
 </html>
